@@ -9,9 +9,11 @@ using AdaptiveCards.Templating;
 using CommunityToolkit.Mvvm.ComponentModel;
 using DevHome.Common.Renderers;
 using DevHome.Common.Services;
+using DevHome.Dashboard.ComSafeWidgetObjects;
 using DevHome.Dashboard.Services;
 using DevHome.Dashboard.TelemetryEvents;
 using DevHome.Telemetry;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -19,8 +21,6 @@ using Microsoft.Windows.Widgets;
 using Microsoft.Windows.Widgets.Hosts;
 using Serilog;
 using Windows.Data.Json;
-using Windows.System;
-using WinUIEx;
 
 namespace DevHome.Dashboard.ViewModels;
 
@@ -32,24 +32,24 @@ namespace DevHome.Dashboard.ViewModels;
 /// <param name="widgetDefinition">WidgetDefinition</param>
 /// <returns>Widget view model</returns>
 public delegate WidgetViewModel WidgetViewModelFactory(
-    Widget widget,
+    ComSafeWidget widget,
     WidgetSize widgetSize,
-    WidgetDefinition widgetDefinition);
+    ComSafeWidgetDefinition widgetDefinition);
 
 public partial class WidgetViewModel : ObservableObject
 {
     private readonly ILogger _log = Log.ForContext("SourceContext", nameof(WidgetViewModel));
 
-    private readonly WindowEx _windowEx;
+    private readonly DispatcherQueue _dispatcherQueue;
     private readonly WidgetAdaptiveCardRenderingService _renderingService;
 
     private RenderedAdaptiveCard _renderedCard;
 
     [ObservableProperty]
-    private Widget _widget;
+    private ComSafeWidget _widget;
 
     [ObservableProperty]
-    private WidgetDefinition _widgetDefinition;
+    private ComSafeWidgetDefinition _widgetDefinition;
 
     [ObservableProperty]
     private WidgetSize _widgetSize;
@@ -66,7 +66,7 @@ public partial class WidgetViewModel : ObservableObject
     [ObservableProperty]
     private FrameworkElement _widgetFrameworkElement;
 
-    partial void OnWidgetChanging(Widget value)
+    partial void OnWidgetChanging(ComSafeWidget value)
     {
         if (Widget != null)
         {
@@ -74,7 +74,7 @@ public partial class WidgetViewModel : ObservableObject
         }
     }
 
-    partial void OnWidgetChanged(Widget value)
+    partial void OnWidgetChanged(ComSafeWidget value)
     {
         if (Widget != null)
         {
@@ -83,25 +83,25 @@ public partial class WidgetViewModel : ObservableObject
         }
     }
 
-    partial void OnWidgetDefinitionChanged(WidgetDefinition value)
+    partial void OnWidgetDefinitionChanged(ComSafeWidgetDefinition value)
     {
         if (WidgetDefinition != null)
         {
             WidgetDisplayTitle = WidgetDefinition.DisplayTitle;
-            WidgetProviderDisplayTitle = WidgetDefinition.ProviderDefinition.DisplayName;
+            WidgetProviderDisplayTitle = WidgetDefinition.ProviderDefinitionDisplayName;
             IsCustomizable = WidgetDefinition.IsCustomizable;
         }
     }
 
     public WidgetViewModel(
-        Widget widget,
+        ComSafeWidget widget,
         WidgetSize widgetSize,
-        WidgetDefinition widgetDefinition,
+        ComSafeWidgetDefinition widgetDefinition,
         WidgetAdaptiveCardRenderingService adaptiveCardRenderingService,
-        WindowEx windowEx)
+        DispatcherQueue dispatcherQueue)
     {
         _renderingService = adaptiveCardRenderingService;
-        _windowEx = windowEx;
+        _dispatcherQueue = dispatcherQueue;
 
         Widget = widget;
         WidgetSize = widgetSize;
@@ -155,7 +155,7 @@ public partial class WidgetViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                _log.Warning("There was an error expanding the Widget template with data: ", ex);
+                _log.Warning(ex, "There was an error expanding the Widget template with data: ");
                 ShowErrorCard("WidgetErrorCardDisplayText");
                 return;
             }
@@ -173,7 +173,7 @@ public partial class WidgetViewModel : ObservableObject
             }
 
             // Render card on the UI thread.
-            _windowEx.DispatcherQueue.TryEnqueue(async () =>
+            _dispatcherQueue.TryEnqueue(async () =>
             {
                 try
                 {
@@ -192,7 +192,7 @@ public partial class WidgetViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    _log.Error("Error rendering widget card: ", ex);
+                    _log.Error(ex, "Error rendering widget card: ");
                     WidgetFrameworkElement = GetErrorCard("WidgetErrorCardDisplayText");
                 }
             });
@@ -235,7 +235,7 @@ public partial class WidgetViewModel : ObservableObject
     public void ShowLoadingCard()
     {
         _log.Debug("Show loading card.");
-        _windowEx.DispatcherQueue.TryEnqueue(() =>
+        _dispatcherQueue.TryEnqueue(() =>
         {
             WidgetFrameworkElement = new ProgressRing();
         });
@@ -244,7 +244,7 @@ public partial class WidgetViewModel : ObservableObject
     // Used to show a message instead of Adaptive Card content in a widget.
     public void ShowErrorCard(string error, string subError = null)
     {
-        _windowEx.DispatcherQueue.TryEnqueue(() =>
+        _dispatcherQueue.TryEnqueue(() =>
         {
             WidgetFrameworkElement = GetErrorCard(error, subError);
         });
@@ -297,7 +297,7 @@ public partial class WidgetViewModel : ObservableObject
         if (args.Action is AdaptiveOpenUrlAction openUrlAction)
         {
             _log.Information($"Url = {openUrlAction.Url}");
-            await Launcher.LaunchUriAsync(openUrlAction.Url);
+            await Windows.System.Launcher.LaunchUriAsync(openUrlAction.Url);
         }
         else if (args.Action is AdaptiveExecuteAction executeAction)
         {
@@ -323,13 +323,13 @@ public partial class WidgetViewModel : ObservableObject
         TelemetryFactory.Get<ITelemetry>().Log(
             "Dashboard_ReportWidgetInteraction",
             LogLevel.Critical,
-            new ReportWidgetInteractionEvent(WidgetDefinition.ProviderDefinition.Id, WidgetDefinition.Id, args.Action.ActionTypeString));
+            new ReportWidgetInteractionEvent(WidgetDefinition.ProviderDefinitionId, WidgetDefinition.Id, args.Action.ActionTypeString));
 
         // TODO: Handle other ActionTypes
         // https://github.com/microsoft/devhome/issues/644
     }
 
-    private async void HandleWidgetUpdated(Widget sender, WidgetUpdatedEventArgs args)
+    private async void HandleWidgetUpdated(ComSafeWidget sender, WidgetUpdatedEventArgs args)
     {
         _log.Debug($"HandleWidgetUpdated for widget {sender.Id}");
         await RenderWidgetFrameworkElementAsync();

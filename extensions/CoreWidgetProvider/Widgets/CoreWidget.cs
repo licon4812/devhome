@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using CoreWidgetProvider.Helpers;
 using CoreWidgetProvider.Widgets.Enums;
 using Microsoft.Windows.Widgets.Providers;
+using Windows.ApplicationModel;
 
 namespace CoreWidgetProvider.Widgets;
 
@@ -131,7 +132,7 @@ internal abstract class CoreWidget : WidgetImpl
 
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, GetTemplatePath(page));
+            var path = Path.Combine(Package.Current.EffectivePath, GetTemplatePath(page));
             var template = File.ReadAllText(path, Encoding.Default) ?? throw new FileNotFoundException(path);
             template = Resources.ReplaceIdentifers(template, Resources.GetWidgetResourceIdentifiers(), Log);
             Log.Debug($"Caching template for {page}");
@@ -140,7 +141,7 @@ internal abstract class CoreWidget : WidgetImpl
         }
         catch (Exception e)
         {
-            Log.Error("Error getting template.", e);
+            Log.Error(e, "Error getting template.");
             return string.Empty;
         }
     }

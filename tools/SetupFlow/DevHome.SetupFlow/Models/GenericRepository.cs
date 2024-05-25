@@ -31,7 +31,17 @@ internal sealed class GenericRepository : Microsoft.Windows.DevHome.SDK.IReposit
     public GenericRepository(Uri cloneUri)
     {
         _displayName = cloneUri.Segments[cloneUri.Segments.Length - 1].ToString().Replace("/", string.Empty);
-        _cloneUri = cloneUri;
+
+        if (cloneUri.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+        {
+            var locationOfHost = cloneUri.OriginalString.IndexOf("www.", StringComparison.OrdinalIgnoreCase);
+            var originalStringWithoutHost = cloneUri.OriginalString.Remove(locationOfHost, 4);
+            _cloneUri = new Uri(originalStringWithoutHost);
+        }
+        else
+        {
+            _cloneUri = cloneUri;
+        }
     }
 
     public IAsyncAction CloneRepositoryAsync(string cloneDestination, IDeveloperId developerId)
@@ -51,22 +61,22 @@ internal sealed class GenericRepository : Microsoft.Windows.DevHome.SDK.IReposit
                 }
                 catch (RecurseSubmodulesException recurseException)
                 {
-                    _log.Error("Could not clone all sub modules", recurseException);
+                    _log.Error(recurseException, "Could not clone all sub modules");
                     throw;
                 }
                 catch (UserCancelledException userCancelledException)
                 {
-                    _log.Error("The user stoped the clone operation", userCancelledException);
+                    _log.Error(userCancelledException, "The user stoped the clone operation");
                     throw;
                 }
                 catch (NameConflictException nameConflictException)
                 {
-                    _log.Error(string.Empty, nameConflictException);
+                    _log.Error(nameConflictException, nameConflictException.ToString());
                     throw;
                 }
                 catch (Exception e)
                 {
-                    _log.Error("Could not clone the repository", e);
+                    _log.Error(e, "Could not clone the repository");
                     throw;
                 }
             }

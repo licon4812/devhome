@@ -16,7 +16,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.DevHome.SDK;
 using Serilog;
-using WinUIEx;
 
 namespace DevHome.Settings.Views;
 
@@ -114,7 +113,7 @@ public sealed partial class AccountsPage : Page
         }
         catch (Exception ex)
         {
-            _log.Error($"ShowLoginUIAsync(): loginUIContentDialog failed.", ex);
+            _log.Error(ex, $"ShowLoginUIAsync(): loginUIContentDialog failed.");
         }
 
         accountProvider.RefreshLoggedInAccounts();
@@ -173,7 +172,7 @@ public sealed partial class AccountsPage : Page
         }
         else if (authenticationFlow == AuthenticationExperienceKind.CustomProvider)
         {
-            var windowHandle = Application.Current.GetService<WindowEx>().GetWindowHandle();
+            var windowHandle = Application.Current.GetService<Window>().GetWindowHandle();
             var windowPtr = Win32Interop.GetWindowIdFromWindow(windowHandle);
             try
             {
@@ -186,7 +185,7 @@ public sealed partial class AccountsPage : Page
             }
             catch (Exception ex)
             {
-                _log.Error($"Exception thrown while calling {nameof(accountProvider.DeveloperIdProvider)}.{nameof(accountProvider.DeveloperIdProvider.ShowLogonSession)}: ", ex);
+                _log.Error(ex, $"Exception thrown while calling {nameof(accountProvider.DeveloperIdProvider)}.{nameof(accountProvider.DeveloperIdProvider.ShowLogonSession)}: ");
             }
 
             accountProvider.RefreshLoggedInAccounts();

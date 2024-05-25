@@ -14,9 +14,10 @@ using DevHome.SetupFlow.Common.Exceptions;
 using DevHome.SetupFlow.Models;
 using DevHome.SetupFlow.Services;
 using DevHome.Telemetry;
+using Microsoft.Diagnostics.Telemetry.Internal;
+using Microsoft.UI.Xaml;
 using Serilog;
 using Windows.Storage;
-using WinUIEx;
 
 namespace DevHome.SetupFlow.ViewModels;
 
@@ -24,7 +25,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
 {
     private readonly ILogger _log = Log.ForContext("SourceContext", nameof(ConfigurationFileViewModel));
     private readonly IDesiredStateConfiguration _dsc;
-    private readonly WindowEx _mainWindow;
+    private readonly Window _mainWindow;
 
     public List<ConfigureTask> TaskList { get; } = new List<ConfigureTask>();
 
@@ -49,7 +50,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
     public ConfigurationFileViewModel(
         ISetupFlowStringResource stringResource,
         IDesiredStateConfiguration dsc,
-        WindowEx mainWindow,
+        Window mainWindow,
         SetupFlowOrchestrator orchestrator)
         : base(stringResource, orchestrator)
     {
@@ -89,7 +90,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
         }
         catch (Exception e)
         {
-            _log.Error($"Failed to initialize elevated process.", e);
+            _log.Error(e, $"Failed to initialize elevated process.");
         }
     }
 
@@ -103,6 +104,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
     [RelayCommand]
     private async Task OnLoadedAsync()
     {
+        TelemetryFactory.Get<ITelemetry>().Log("ConfigurationFile_Loaded", LogLevel.Critical, new EmptyEvent(PartA_PrivTags.ProductAndServicePerformance), Orchestrator.ActivityId);
         try
         {
             if (Configuration != null && ConfigurationUnits == null)
@@ -113,8 +115,14 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
         }
         catch (Exception e)
         {
-            _log.Error($"Failed to get configuration unit details.", e);
+            _log.Error(e, $"Failed to get configuration unit details.");
         }
+    }
+
+    [RelayCommand]
+    private void OnViewSelectionChanged(string newViewMode)
+    {
+        TelemetryFactory.Get<ITelemetry>().Log("ConfigurationFile_ViewSelectionChanged", LogLevel.Critical, new ConfigureModeCommandEvent(newViewMode), Orchestrator.ActivityId);
     }
 
     /// <summary>
@@ -134,7 +142,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
         }
         catch (Exception e)
         {
-            _log.Error($"Failed to open file picker.", e);
+            _log.Error(e, $"Failed to open file picker.");
             return false;
         }
     }
@@ -184,7 +192,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
         }
         catch (OpenConfigurationSetException e)
         {
-            _log.Error($"Opening configuration set failed.", e);
+            _log.Error(e, $"Opening configuration set failed.");
             await _mainWindow.ShowErrorMessageDialogAsync(
                 StringResource.GetLocalized(StringResourceKey.ConfigurationViewTitle, file.Name),
                 GetErrorMessage(e),
@@ -192,7 +200,7 @@ public partial class ConfigurationFileViewModel : SetupPageViewModelBase
         }
         catch (Exception e)
         {
-            _log.Error($"Unknown error while opening configuration set.", e);
+            _log.Error(e, $"Unknown error while opening configuration set.");
 
             await _mainWindow.ShowErrorMessageDialogAsync(
                 file.Name,

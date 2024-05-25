@@ -30,7 +30,7 @@ public partial class SetupTargetReviewViewModel : ReviewTabViewModelBase
 
     public ComputeSystemReviewItem ComputeSystemSetupItem => _computeSystemManager.ComputeSystemSetupItem;
 
-    public IEnumerable<ComputeSystemProperty> ComputeSystemProperties { get; private set; }
+    public IEnumerable<ComputeSystemPropertyCache> ComputeSystemProperties { get; private set; }
 
     [ObservableProperty]
     private string _infoBarMessage;
@@ -40,13 +40,10 @@ public partial class SetupTargetReviewViewModel : ReviewTabViewModelBase
     [ObservableProperty]
     private string _osName;
 
-    [ObservableProperty]
-    private bool _wasOsNameRetrieved;
-
     public SetupTargetReviewViewModel(ISetupFlowStringResource stringResource, IComputeSystemManager computeSystemManager)
     {
         _stringResource = stringResource;
-        TabTitle = stringResource.GetLocalized(StringResourceKey.SetupTargetPageTitle);
+        TabTitle = stringResource.GetLocalized(StringResourceKey.SetupTargetReviewTabTitle);
         _computeSystemManager = computeSystemManager;
     }
 
@@ -66,31 +63,28 @@ public partial class SetupTargetReviewViewModel : ReviewTabViewModelBase
     private async Task SetOsNameAsync()
     {
         var computeSystem = _computeSystemManager.ComputeSystemSetupItem.ComputeSystemToSetup;
-        ComputeSystemProperties ??= await computeSystem?.GetComputeSystemPropertiesAsync(string.Empty);
+        ComputeSystemProperties = await computeSystem?.GetComputeSystemPropertiesAsync(string.Empty);
+        OsName = null;
 
         if (ComputeSystemProperties == null)
         {
             return;
         }
 
+        var osName = string.Empty;
         foreach (var property in ComputeSystemProperties)
         {
             var lowerCasePropertyName = property.Name.ToLowerInvariant();
             if (_osPropertyNameValues.Contains(lowerCasePropertyName))
             {
-                OsName = property.Value as string;
+                osName = property.Value as string;
                 break;
             }
         }
 
-        if (!string.IsNullOrEmpty(OsName))
+        if (!string.IsNullOrEmpty(osName))
         {
-            WasOsNameRetrieved = true;
-        }
-        else
-        {
-            WasOsNameRetrieved = false;
-            OsName = _stringResource.GetLocalized(StringResourceKey.SetupTargetUnknownStatus);
+            OsName = osName;
         }
     }
 }

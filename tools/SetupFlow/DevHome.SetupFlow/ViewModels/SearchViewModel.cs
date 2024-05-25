@@ -93,7 +93,6 @@ public partial class SearchViewModel : ObservableObject
         {
             // Run the search on a separate (non-UI) thread to prevent lagging the UI.
             _log.Information($"Running package search for query [{text}]");
-            TelemetryFactory.Get<ITelemetry>().Log("Search_SearchingForApplication_Event", LogLevel.Critical, new SearchEvent());
             var matches = await Task.Run(async () => await _wpm.SearchAsync(text, SearchResultLimit), cancellationToken);
 
             // Don't update the UI if the operation was canceled
@@ -109,10 +108,12 @@ public partial class SearchViewModel : ObservableObject
             // Announce the results.
             if (ResultPackages.Count != 0)
             {
+                TelemetryFactory.Get<ITelemetry>().Log("Search_SearchingForApplication_Found_Event", LogLevel.Critical, new SearchEvent());
                 _screenReaderService.Announce(SearchCountText);
             }
             else
             {
+                TelemetryFactory.Get<ITelemetry>().Log("Search_SearchingForApplication_NotFound_Event", LogLevel.Critical, new SearchEvent());
                 _screenReaderService.Announce(NoSearchResultsText);
             }
 
@@ -128,7 +129,7 @@ public partial class SearchViewModel : ObservableObject
         }
         catch (Exception e)
         {
-            _log.Error($"Search error.", e);
+            _log.Error(e, $"Search error.");
             return (SearchResultStatus.ExceptionThrown, null);
         }
     }

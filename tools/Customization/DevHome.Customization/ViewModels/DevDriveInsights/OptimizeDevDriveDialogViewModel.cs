@@ -2,15 +2,20 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using DevHome.Common.Extensions;
 using DevHome.Common.Services;
+using DevHome.Common.TelemetryEvents;
+using DevHome.Customization.Models;
+using DevHome.Telemetry;
+using Microsoft.UI.Xaml;
 using Serilog;
 using Windows.Storage.Pickers;
-using WinUIEx;
 
 namespace DevHome.Customization.ViewModels.DevDriveInsights;
 
@@ -19,6 +24,9 @@ namespace DevHome.Customization.ViewModels.DevDriveInsights;
 /// </summary>
 public partial class OptimizeDevDriveDialogViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private List<string> _existingDevDriveLetters;
+
     [ObservableProperty]
     private string _exampleDevDriveLocation;
 
@@ -40,16 +48,33 @@ public partial class OptimizeDevDriveDialogViewModel : ObservableObject
     [ObservableProperty]
     private string _directoryPathTextBox;
 
-    public OptimizeDevDriveDialogViewModel(string existingCacheLocation, string environmentVariableToBeSet)
+    [ObservableProperty]
+    private bool _isPrimaryButtonEnabled;
+
+    [ObservableProperty]
+    private string _errorMessage;
+
+    [ObservableProperty]
+    private bool _isNotDevDrive;
+
+    public OptimizeDevDriveDialogViewModel(
+        string existingCacheLocation,
+        string environmentVariableToBeSet,
+        string exampleDevDriveLocation,
+        List<string> existingDevDriveLetters)
     {
         DirectoryPathTextBox = string.Empty;
         var stringResource = new StringResource("DevHome.Customization.pri", "DevHome.Customization/Resources");
-        ExampleDevDriveLocation = stringResource.GetLocalized("ExampleDevDriveLocation");
+        ExistingDevDriveLetters = existingDevDriveLetters;
+        ExampleDevDriveLocation = stringResource.GetLocalized("ExampleText") + exampleDevDriveLocation;
         ChooseDirectoryPromptText = stringResource.GetLocalized("ChooseDirectoryPromptText");
         MakeChangesText = stringResource.GetLocalized("MakeChangesText");
         ExistingCacheLocation = existingCacheLocation;
         EnvironmentVariableToBeSet = environmentVariableToBeSet;
         OptimizeDevDriveDialogDescription = stringResource.GetLocalized("OptimizeDevDriveDialogDescription/Text", ExistingCacheLocation, EnvironmentVariableToBeSet);
+        IsPrimaryButtonEnabled = false;
+        ErrorMessage = string.Empty;
+        IsNotDevDrive = false;
     }
 
     [RelayCommand]
@@ -69,16 +94,41 @@ public partial class OptimizeDevDriveDialogViewModel : ObservableObject
         };
 
         folderPicker.FileTypeFilter.Add("*");
-        WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, Microsoft.UI.Xaml.Application.Current.GetService<WindowEx>().GetWindowHandle());
+        WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, Microsoft.UI.Xaml.Application.Current.GetService<Window>().GetWindowHandle());
         var folder = await folderPicker.PickSingleFolderAsync();
 
         if (folder != null)
         {
             DirectoryPathTextBox = folder.Path;
+            if (ChosenDirectoryInDevDrive(DirectoryPathTextBox))
+            {
+                IsPrimaryButtonEnabled = true;
+                IsNotDevDrive = false;
+            }
+            else
+            {
+                IsPrimaryButtonEnabled = false;
+                IsNotDevDrive = true;
+                var stringResource = new StringResource("DevHome.Customization.pri", "DevHome.Customization/Resources");
+                ErrorMessage = stringResource.GetLocalized("ChosenDirectoryNotOnDevDriveErrorText");
+            }
         }
     }
 
-    private void MoveDirectory(string sourceDirectory, string targetDirectory)
+    private string RemovePrivacyInfo(string input)
+    {
+        var output = input;
+        var userProfilePath = Environment.ExpandEnvironmentVariables("%userprofile%");
+        if (input.StartsWith(userProfilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            var index = input.LastIndexOf(userProfilePath, StringComparison.OrdinalIgnoreCase) + userProfilePath.Length;
+            output = Path.Join("%userprofile%", input.Substring(index));
+        }
+
+        return output;
+    }
+
+    private bool MoveDirectory(string sourceDirectory, string targetDirectory)
     {
         try
         {
@@ -110,10 +160,55 @@ public partial class OptimizeDevDriveDialogViewModel : ObservableObject
 
             // Delete the source directory
             Directory.Delete(sourceDirectory, true);
+            return true;
         }
         catch (Exception ex)
         {
             Log.Error($"Error in MoveDirectory. Error: {ex}");
+            TelemetryFactory.Get<ITelemetry>().LogError("DevDriveInsights_PackageCacheMoveDirectory_Error", LogLevel.Critical, new ExceptionEvent(ex.HResult, RemovePrivacyInfo(sourceDirectory)));
+            return false;
+        }
+    }
+
+    private void UpdatePathEnvironmentVariable(string value)
+    {
+        var pathEnvironmentVariable = "PATH";
+        var existingValue = Environment.GetEnvironmentVariable(pathEnvironmentVariable, EnvironmentVariableTarget.User);
+        if (existingValue != null)
+        {
+            // Split the existing value into parts
+            var parts = existingValue.Split(';');
+
+            // Check if the specific value exists
+            var valueExists = false;
+            for (var i = 0; i < parts.Length; i++)
+            {
+                if (parts[i].Trim().Equals(ExistingCacheLocation, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Replace the existing value
+                    parts[i] = value;
+                    valueExists = true;
+                    break;
+                }
+            }
+
+            if (!valueExists)
+            {
+                // Add the new value
+                Array.Resize(ref parts, parts.Length + 1);
+                parts[parts.Length - 1] = Path.Join(value, "bin");
+            }
+
+            // Join the modified parts back together
+            var modifiedValue = string.Join(";", parts);
+
+            // Set the modified value to the environment variable
+            Environment.SetEnvironmentVariable(pathEnvironmentVariable, modifiedValue, EnvironmentVariableTarget.User);
+        }
+        else
+        {
+            // The environment variable doesn't exist, add the new value
+            Environment.SetEnvironmentVariable(pathEnvironmentVariable, value, EnvironmentVariableTarget.User);
         }
     }
 
@@ -122,11 +217,31 @@ public partial class OptimizeDevDriveDialogViewModel : ObservableObject
         try
         {
             Environment.SetEnvironmentVariable(variableName, value, EnvironmentVariableTarget.User);
+
+            if (string.Equals(variableName, "CARGO_HOME", StringComparison.OrdinalIgnoreCase))
+            {
+                // Check if PATH environment variable contains existing cargo location.
+                // If so, update that to new location. Otherwise append the new location.
+                UpdatePathEnvironmentVariable(value);
+            }
         }
         catch (Exception ex)
         {
-            Log.Error($"Error in SetEnvironmentVariable. Error: {ex}");
+            Log.Error(ex, $"Error in SetEnvironmentVariable. Error: {ex}");
         }
+    }
+
+    private bool ChosenDirectoryInDevDrive(string directoryPath)
+    {
+        foreach (var devDriveLetter in ExistingDevDriveLetters)
+        {
+            if (directoryPath.StartsWith(devDriveLetter + ":", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     [RelayCommand]
@@ -136,10 +251,23 @@ public partial class OptimizeDevDriveDialogViewModel : ObservableObject
 
         if (!string.IsNullOrEmpty(directoryPath))
         {
-            // Handle the selected folder
-            // TODO: If chosen folder not a dev drive location, currently we no-op. Instead we should display the error.
-            MoveDirectory(ExistingCacheLocation, directoryPath);
-            SetEnvironmentVariable(EnvironmentVariableToBeSet, directoryPath);
+            if (ChosenDirectoryInDevDrive(directoryPath))
+            {
+                if (MoveDirectory(ExistingCacheLocation, directoryPath))
+                {
+                    SetEnvironmentVariable(EnvironmentVariableToBeSet, directoryPath);
+                    var existingCacheLocationVetted = RemovePrivacyInfo(ExistingCacheLocation);
+                    Log.Debug($"Moved cache from {existingCacheLocationVetted} to {directoryPath}");
+                    TelemetryFactory.Get<ITelemetry>().Log("DevDriveInsights_PackageCacheMovedSuccessfully_Event", LogLevel.Critical, new ExceptionEvent(0, existingCacheLocationVetted));
+
+                    // Send message to the DevDriveInsightsViewModel to let it refresh the Dev Drive insights UX
+                    WeakReferenceMessenger.Default.Send(new DevDriveOptimizedMessage(new DevDriveOptimizedData()));
+                }
+            }
+            else
+            {
+                Log.Error($"Chosen directory {directoryPath} not on a dev drive.");
+            }
         }
     }
 }
