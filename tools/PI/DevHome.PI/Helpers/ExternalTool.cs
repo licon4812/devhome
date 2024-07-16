@@ -2,30 +2,39 @@
 // Licensed under the MIT License.
 
 using System;
-using System.ComponentModel;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
-using Windows.Graphics.Imaging;
+using Windows.System;
+using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.System.Com;
 using static DevHome.PI.Helpers.WindowHelper;
 
 namespace DevHome.PI.Helpers;
 
-public enum ExternalToolArgType
+public enum ToolActivationType
 {
-    None,
-    ProcessId,
-    Hwnd,
+    Protocol,
+    Msix,
+    Launch,
 }
 
-// ExternalTool represents an imported tool
 public partial class ExternalTool : ObservableObject
 {
     private static readonly ILogger _log = Log.ForContext("SourceContext", nameof(ExternalTool));
+
+    private readonly string _errorMessageText = CommonHelper.GetLocalizedString("ToolLaunchErrorMessage");
 
     public string ID { get; private set; }
 
@@ -33,66 +42,72 @@ public partial class ExternalTool : ObservableObject
 
     public string Executable { get; private set; }
 
-    [JsonConverter(typeof(EnumStringConverter<ExternalToolArgType>))]
-    public ExternalToolArgType ArgType { get; private set; } = ExternalToolArgType.None;
+    [JsonConverter(typeof(EnumStringConverter<ToolActivationType>))]
+    public ToolActivationType ActivationType { get; private set; } = ToolActivationType.Launch;
 
-    public string ArgPrefix
-    {
-        get; private set;
-    }
+    public string Arguments { get; private set; }
 
-    public string OtherArgs
-    {
-        get; private set;
-    }
+    public string AppUserModelId { get; private set; }
+
+    public string IconFilePath { get; private set; }
 
     [ObservableProperty]
     private bool _isPinned;
 
-    // Note the additional "property:" syntax to ensure the JsonIgnore is propagated to the generated property.
+    [ObservableProperty]
+    [property: JsonIgnore]
+    private string _pinGlyph;
+
     [ObservableProperty]
     [property: JsonIgnore]
     private SoftwareBitmapSource? _toolIcon;
 
-    [ObservableProperty]
-    [property: JsonIgnore]
-    private BitmapIcon? _menuIcon;
-
-    [JsonIgnore]
-    private SoftwareBitmap? _softwareBitmap;
-
     public ExternalTool(
         string name,
         string executable,
-        ExternalToolArgType argtype,
-        string argprefix = "",
-        string otherArgs = "",
+        ToolActivationType activationType,
+        string arguments = "",
+        string appUserModelId = "",
+        string iconFilePath = "",
         bool isPinned = false)
     {
         Name = name;
         Executable = executable;
-        ArgType = argtype;
-        ArgPrefix = argprefix;
-        OtherArgs = otherArgs;
+        ActivationType = activationType;
+        Arguments = arguments;
+        AppUserModelId = appUserModelId;
+        IconFilePath = iconFilePath;
         IsPinned = isPinned;
+        PinGlyph = IsPinned ? CommonHelper.UnpinGlyph : CommonHelper.PinGlyph;
 
         ID = Guid.NewGuid().ToString();
 
         if (!string.IsNullOrEmpty(executable))
         {
-            GetToolImage();
-            GetMenuIcon();
+            GetIcons();
         }
     }
 
-    private async void GetToolImage()
+    partial void OnIsPinnedChanged(bool oldValue, bool newValue)
+    {
+        PinGlyph = newValue ? CommonHelper.UnpinGlyph : CommonHelper.PinGlyph;
+    }
+
+    private async void GetIcons()
     {
         try
         {
-            _softwareBitmap ??= GetSoftwareBitmapFromExecutable(Executable);
-            if (_softwareBitmap is not null)
+            if (!string.IsNullOrEmpty(IconFilePath))
             {
-                ToolIcon = await GetSoftwareBitmapSourceFromSoftwareBitmap(_softwareBitmap);
+                ToolIcon = await GetSoftwareBitmapSourceFromImageFilePath(IconFilePath);
+            }
+            else
+            {
+                var softwareBitmap = GetSoftwareBitmapFromExecutable(Executable);
+                if (softwareBitmap is not null)
+                {
+                    ToolIcon = await GetSoftwareBitmapSourceFromSoftwareBitmapAsync(softwareBitmap);
+                }
             }
         }
         catch (Exception ex)
@@ -101,64 +116,155 @@ public partial class ExternalTool : ObservableObject
         }
     }
 
-    private async void GetMenuIcon()
+    internal async Task<Process?> Invoke(int? pid, HWND? hwnd)
     {
+        var process = default(Process);
+
+        var parsedArguments = string.Empty;
+        if (!string.IsNullOrEmpty(Arguments))
+        {
+            var argumentVariables = new Dictionary<string, int>();
+            if (pid.HasValue)
+            {
+                argumentVariables.Add("pid", pid.Value);
+            }
+
+            if (hwnd.HasValue)
+            {
+                argumentVariables.Add("hwnd", (int)hwnd.Value);
+            }
+
+            parsedArguments = ReplaceKnownVariables(Arguments, argumentVariables);
+        }
+
         try
         {
-            _softwareBitmap ??= GetSoftwareBitmapFromExecutable(Executable);
-            if (_softwareBitmap is not null)
+            if (ActivationType == ToolActivationType.Protocol)
             {
-                var bitmapUri = await SaveSoftwareBitmapToTempFile(_softwareBitmap);
-                MenuIcon = new BitmapIcon
+                // Docs say this returns true if the default app for the URI scheme was launched;
+                // false otherwise. However, if there's no registered app for the protocol, it shows
+                // the "get an app from the store" dialog, and returns true. So we can't rely on the
+                // return value to know if the tool was actually launched.
+                var result = await Launcher.LaunchUriAsync(new Uri(parsedArguments));
+                if (result != true)
                 {
-                    UriSource = bitmapUri,
-                    ShowAsMonochrome = false,
-                };
+                    // We get here if the user supplied a valid registered protocol, but the app failed to launch.
+                    var errorMessage = string.Format(
+                        CultureInfo.InvariantCulture, _errorMessageText, parsedArguments);
+                    throw new InvalidOperationException(errorMessage);
+                }
+            }
+            else
+            {
+                if (ActivationType == ToolActivationType.Msix)
+                {
+                    process = LaunchPackagedTool(AppUserModelId);
+                }
+                else
+                {
+                    var finalExecutable = string.Empty;
+                    var finalArguments = string.Empty;
+
+                    if (Path.GetExtension(Executable).Equals(".msc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Note: running most msc files requires elevation.
+                        finalExecutable = "mmc.exe";
+                        finalArguments = $"{Executable} {parsedArguments}";
+                    }
+                    else if (Path.GetExtension(Executable).Equals(".ps1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Note: running powershell scripts might require setting the execution policy.
+                        finalExecutable = "powershell.exe";
+                        finalArguments = $"{Executable} {parsedArguments}";
+                    }
+                    else
+                    {
+                        finalExecutable = Executable;
+                        finalArguments = parsedArguments;
+                    }
+
+                    var startInfo = new ProcessStartInfo()
+                    {
+                        FileName = finalExecutable,
+                        Arguments = finalArguments,
+                        UseShellExecute = true,
+                    };
+                    process = Process.Start(startInfo);
+                }
             }
         }
         catch (Exception ex)
         {
-            _log.Error(ex, "Failed to get menu icon");
+            // We compose a custom exception because an exception from executing some tools
+            // (powershell, mmc) will have lost the target tool information.
+            var errorMessage = string.Format(CultureInfo.InvariantCulture, _errorMessageText, Executable);
+            throw new InvalidOperationException(errorMessage, ex);
         }
+
+        return process;
     }
 
-    internal string CreateFullCommandLine(int? pid, HWND? hwnd)
+    public static Process? LaunchPackagedTool(string appUserModelId)
     {
-        return "\"" + Executable + "\"" + CreateCommandLine(pid, hwnd);
+        var process = default(Process);
+        var clsid = CLSID.ApplicationActivationManager;
+        var iid = typeof(IApplicationActivationManager).GUID;
+        object obj;
+
+        int hr = PInvoke.CoCreateInstance(
+            in clsid, null, CLSCTX.CLSCTX_LOCAL_SERVER, in iid, out obj);
+
+        if (HResult.Succeeded(hr))
+        {
+            var appActiveManager = (IApplicationActivationManager)obj;
+            uint processId;
+            hr = appActiveManager.ActivateApplication(
+                appUserModelId, string.Empty, ACTIVATEOPTIONS.None, out processId);
+            if (HResult.Succeeded(hr))
+            {
+                process = Process.GetProcessById((int)processId);
+            }
+        }
+        else
+        {
+            Marshal.ThrowExceptionForHR(hr);
+        }
+
+        return process;
     }
 
-    internal string CreateCommandLine(int? pid, HWND? hwnd)
+    private string ReplaceKnownVariables(string input, Dictionary<string, int> argumentValues)
     {
-        var commandLine = $" {OtherArgs}";
+        // Process the input string to replace any instance of defined variables with "real" values.
+        // Eg, replace {pid} with 123, {hwnd} with 456.
+        var pattern = @"\{(\w+)\}";
 
-        if (ArgType == ExternalToolArgType.Hwnd && hwnd is not null)
+        var result = Regex.Replace(input, pattern, match =>
         {
-            commandLine = $" {ArgPrefix} {hwnd:D} {OtherArgs}";
-        }
-        else if (ArgType == ExternalToolArgType.ProcessId && pid is not null)
-        {
-            commandLine = $" {ArgPrefix} {pid:D} {OtherArgs}";
-        }
+            var variable = match.Groups[1].Value;
 
-        return commandLine;
+            // Check if the variable exists in the dictionary; if so, replace it.
+            if (argumentValues.TryGetValue(variable, out var replacementValue))
+            {
+                return replacementValue.ToString(CultureInfo.InvariantCulture);
+            }
+
+            // If the variable is not found, keep it as is.
+            return match.Value;
+        });
+
+        return result;
     }
 
-    internal virtual Process? Invoke(int? pid, HWND? hwnd)
+    [RelayCommand]
+    public void TogglePinnedState()
     {
-        try
-        {
-            var toolProcess = new Process();
-            toolProcess.StartInfo.FileName = Executable;
-            toolProcess.StartInfo.Arguments = CreateCommandLine(pid, hwnd);
-            toolProcess.StartInfo.UseShellExecute = false;
-            toolProcess.StartInfo.RedirectStandardOutput = true;
-            toolProcess.Start();
-            return toolProcess;
-        }
-        catch (Exception ex)
-        {
-            _log.Error(ex, "Tool launched failed");
-            return null;
-        }
+        IsPinned = !IsPinned;
+    }
+
+    [RelayCommand]
+    public void UnregisterTool()
+    {
+        ExternalToolsHelper.Instance.RemoveExternalTool(this);
     }
 }

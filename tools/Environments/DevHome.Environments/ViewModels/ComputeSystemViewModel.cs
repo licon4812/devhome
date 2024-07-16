@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using CommunityToolkit.WinUI;
@@ -48,6 +49,13 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
     public string PackageFullName { get; set; }
 
     private readonly Func<ComputeSystemCardBase, bool> _removalAction;
+
+    [ObservableProperty]
+    private bool _shouldShowDotOperations;
+
+    [ObservableProperty]
+    private bool _shouldShowSplitButton;
+
     private bool _disposedValue;
 
     /// <summary>
@@ -122,23 +130,45 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
         await _semaphoreSlimLock.WaitAsync();
         try
         {
+            ShouldShowDotOperations = false;
+            ShouldShowSplitButton = false;
+
             RegisterForAllOperationMessages(DataExtractor.FillDotButtonOperations(ComputeSystem, _mainWindow), DataExtractor.FillLaunchButtonOperations(ComputeSystem));
 
-            foreach (var data in await DataExtractor.FillDotButtonPinOperationsAsync(ComputeSystem))
+            _ = Task.Run(async () =>
             {
-                if ((!data.WasPinnedStatusSuccessful) || (data.ViewModel == null))
+                var start = DateTime.Now;
+                List<OperationsViewModel> validData = new();
+                foreach (var data in await DataExtractor.FillDotButtonPinOperationsAsync(ComputeSystem))
                 {
-                    // TODO: pinned status for dev box for example fails often. So we'll log it and not show notifications so we don't overload the user with
-                    // failure notifications until the feature is fixed. We simply do not show the pinned icons in these cases since we don't know which ones
-                    // to show.
-                    _log.Error($"Pinned status check failed: for '{Name}': {data?.PinnedStatusDisplayMessage}. DiagnosticText: {data?.PinnedStatusDiagnosticText}");
-                    continue;
+                    if ((!data.WasPinnedStatusSuccessful) || (data.ViewModel == null))
+                    {
+                        _log.Error($"Pinned status check failed: for '{Name}': {data?.PinnedStatusDisplayMessage}. DiagnosticText: {data?.PinnedStatusDiagnosticText}");
+                        continue;
+                    }
+
+                    validData.Add(data.ViewModel);
+                    WeakReferenceMessenger.Default.Register<ComputeSystemOperationStartedMessage, OperationsViewModel>(this, data.ViewModel);
+                    WeakReferenceMessenger.Default.Register<ComputeSystemOperationCompletedMessage, OperationsViewModel>(this, data.ViewModel);
                 }
 
-                DotOperations.Add(data.ViewModel);
-                WeakReferenceMessenger.Default.Register<ComputeSystemOperationStartedMessage, OperationsViewModel>(this, data.ViewModel);
-                WeakReferenceMessenger.Default.Register<ComputeSystemOperationCompletedMessage, OperationsViewModel>(this, data.ViewModel);
-            }
+                _log.Information($"Registering pin operations for {Name} in background took {DateTime.Now - start}");
+
+                // Add valid data to the DotOperations collection
+                _mainWindow.DispatcherQueue.TryEnqueue(() =>
+                {
+                    foreach (var data in validData)
+                    {
+                        DotOperations.Add(data);
+                    }
+
+                    // Only show dot operations when there are items in the list.
+                    ShouldShowDotOperations = DotOperations.Count > 0;
+
+                    // Only show Launch split button with operations when there are items in the list.
+                    ShouldShowSplitButton = LaunchOperations.Count > 0;
+                });
+            });
 
             SetPropertiesAsync();
         }
@@ -239,23 +269,21 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_Launch_Event",
                 LogLevel.Critical,
-                new EnvironmentLaunchUserEvent(ComputeSystem.AssociatedProviderId.Value, EnvironmentsTelemetryStatus.Started));
+                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, EnvironmentsTelemetryStatus.Started));
 
             var operationResult = await ComputeSystem.ConnectAsync(string.Empty);
 
-            var completionStatus = EnvironmentsTelemetryStatus.Succeeded;
-            var operationFailed = (operationResult == null) || (operationResult.Result.Status == ProviderOperationStatus.Failure);
-
-            if (operationFailed)
-            {
-                completionStatus = EnvironmentsTelemetryStatus.Failed;
-                LogFailure(operationResult);
-            }
-
+            var (displayMessage, diagnosticText, telemetryStatus) = ComputeSystemHelpers.LogResult(operationResult?.Result, _log);
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_Launch_Event",
                 LogLevel.Critical,
-                new EnvironmentLaunchUserEvent(ComputeSystem.AssociatedProviderId.Value, completionStatus));
+                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, telemetryStatus, displayMessage, diagnosticText));
+
+            if (telemetryStatus == EnvironmentsTelemetryStatus.Failed)
+            {
+                // Show the error notification to tell the user the operation failed
+                OnErrorReceived(displayMessage);
+            }
 
             _mainWindow.DispatcherQueue.TryEnqueue(() =>
             {
@@ -275,24 +303,6 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
         });
     }
 
-    private void LogFailure(ComputeSystemOperationResult? operationResult)
-    {
-        var messageWhenNull = _stringResource.GetLocalized("EnvironmentOperationFailedUnKnownReasonText");
-        var errorMessage = (operationResult != null) ? operationResult.Result.DisplayMessage : messageWhenNull;
-
-        if (operationResult == null)
-        {
-            _log.Error($"Launch operation failed for {ComputeSystem}. The ComputeSystemOperationResult was null");
-        }
-        else
-        {
-            _log.Error(operationResult.Result.ExtendedError, $"Launch operation failed for {ComputeSystem} error: {operationResult.Result.DiagnosticText}");
-        }
-
-        // Show the error notification to tell the user the operation failed
-        OnErrorReceived(errorMessage);
-    }
-
     /// <summary>
     /// Implements the Receive method from the IRecipient<ComputeSystemOperationStartedMessage> interface. When this message
     /// is received we fire the first telemetry event to capture which operation and provider is starting.
@@ -305,12 +315,15 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             var data = message.Value;
             IsOperationInProgress = true;
             ShouldShowLaunchOperation = false;
+            var providerId = ComputeSystem.AssociatedProviderId.Value;
 
             _log.Information($"operation '{data.ComputeSystemOperation}' starting for Compute System: {Name}");
+
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_OperationInvoked_Event",
                 LogLevel.Measure,
-                new EnvironmentOperationUserEvent(data.TelemetryStatus, data.ComputeSystemOperation, ComputeSystem.AssociatedProviderId.Value, data.AdditionalContext, data.ActivityId));
+                new EnvironmentOperationEvent(EnvironmentsTelemetryStatus.Started, data.ComputeSystemOperation, providerId, data.AdditionalContext),
+                relatedActivityId: message.Value.ActivityId);
         });
     }
 
@@ -326,18 +339,13 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             var data = message.Value;
             _log.Information($"operation '{data.ComputeSystemOperation}' completed for Compute System: {Name}");
 
-            var completionStatus = EnvironmentsTelemetryStatus.Succeeded;
-
-            if ((data.OperationResult == null) || (data.OperationResult.Result.Status == ProviderOperationStatus.Failure))
-            {
-                completionStatus = EnvironmentsTelemetryStatus.Failed;
-                LogFailure(data.OperationResult);
-            }
-
+            var providerId = ComputeSystem.AssociatedProviderId.Value;
+            var (displayMessage, diagnosticText, telemetryStatus) = ComputeSystemHelpers.LogResult(data.OperationResult.Result, _log);
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_OperationInvoked_Event",
                 LogLevel.Measure,
-                new EnvironmentOperationUserEvent(completionStatus, data.ComputeSystemOperation, ComputeSystem.AssociatedProviderId.Value, data.AdditionalContext, data.ActivityId));
+                new EnvironmentOperationEvent(telemetryStatus, data.ComputeSystemOperation, providerId, data.AdditionalContext, displayMessage, diagnosticText),
+                relatedActivityId: message.Value.ActivityId);
         });
     }
 

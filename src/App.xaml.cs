@@ -15,6 +15,9 @@ using DevHome.Dashboard.Extensions;
 using DevHome.ExtensionLibrary.Extensions;
 using DevHome.Helpers;
 using DevHome.Services;
+using DevHome.Services.Core.Extensions;
+using DevHome.Services.DesiredStateConfiguration.Extensions;
+using DevHome.Services.WindowsPackageManager.Extensions;
 using DevHome.Settings.Extensions;
 using DevHome.SetupFlow.Extensions;
 using DevHome.SetupFlow.Services;
@@ -22,16 +25,15 @@ using DevHome.Telemetry;
 using DevHome.Utilities.Extensions;
 using DevHome.ViewModels;
 using DevHome.Views;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.Windows.AppLifecycle;
 using Serilog;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace DevHome;
 
@@ -79,16 +81,10 @@ public partial class App : Application, IApp
     public App()
     {
         InitializeComponent();
+#if DEBUG_FAILFAST
+        DebugSettings.FailFastOnErrors = true;
+#endif
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
-
-        // Set up Logging
-        Environment.SetEnvironmentVariable("DEVHOME_LOGS_ROOT", Path.Join(Common.Logging.LogFolderRoot, "DevHome"));
-        var configuration = new ConfigurationBuilder()
-            .AddJsonFile("appsettings.json")
-            .Build();
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(configuration)
-            .CreateLogger();
 
         Host = Microsoft.Extensions.Hosting.Host.
         CreateDefaultBuilder().
@@ -110,6 +106,11 @@ public partial class App : Application, IApp
             services.AddTransient<IActivationHandler, DSCFileActivationHandler>();
             services.AddTransient<IActivationHandler, AppInstallActivationHandler>();
 
+            // Service projects
+            services.AddCore();
+            services.AddWinGet();
+            services.AddDSC();
+
             // Services
             services.AddSingleton<ILocalSettingsService, LocalSettingsService>();
             services.AddSingleton<IExperimentationService, ExperimentationService>();
@@ -125,8 +126,6 @@ public partial class App : Application, IApp
             services.AddSingleton<IAppInfoService, AppInfoService>();
             services.AddSingleton<ITelemetry>(TelemetryFactory.Get<ITelemetry>());
             services.AddSingleton<IStringResource, StringResource>();
-            services.AddSingleton<IAppInstallManagerService, AppInstallManagerService>();
-            services.AddSingleton<IPackageDeploymentService, PackageDeploymentService>();
             services.AddSingleton<IScreenReaderService, ScreenReaderService>();
             services.AddSingleton<IComputeSystemService, ComputeSystemService>();
             services.AddSingleton<IComputeSystemManager, ComputeSystemManager>();
@@ -185,24 +184,29 @@ public partial class App : Application, IApp
     {
         _dispatcherQueue.TryEnqueue(() =>
         {
-            var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(MainWindow);
-            if (PInvoke.IsIconic(new HWND(hWnd)) && MainWindow.AppWindow.Presenter is OverlappedPresenter overlappedPresenter)
+            var hWnd = new HWND(WinRT.Interop.WindowNative.GetWindowHandle(MainWindow));
+            if (PInvoke.IsIconic(hWnd))
             {
-                overlappedPresenter.Restore(true);
+                PInvoke.ShowWindow(hWnd, SHOW_WINDOW_CMD.SW_RESTORE);
             }
             else
             {
-                PInvoke.SetForegroundWindow(new HWND(hWnd));
+                PInvoke.SetForegroundWindow(hWnd);
             }
         });
     }
 
     private async void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
-        // TODO: Log and handle exceptions as appropriate.
         // https://docs.microsoft.com/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.application.unhandledexception.
-        // https://github.com/microsoft/devhome/issues/613
+        Log.Fatal(e.Exception, $"Unhandled exception: {e.Message}");
+
+        // We are about to crash, so signal the extensions to stop.
         await GetService<IExtensionService>().SignalStopExtensionsAsync();
+        Log.CloseAndFlush();
+
+        // We are very likely in a bad and unrecoverable state, so ensure Dev Home crashes w/ the exception info.
+        Environment.FailFast(e.Message, e.Exception);
     }
 
     protected async override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
@@ -224,10 +228,5 @@ public partial class App : Application, IApp
 
         // Activate the app and ensure the appropriate handlers are called.
         await _dispatcherQueue.EnqueueAsync(async () => await GetService<IActivationService>().ActivateAsync(localArgsDataReference));
-    }
-
-    private void Window_Closed(object sender, EventArgs e)
-    {
-        Log.CloseAndFlush();
     }
 }

@@ -3,8 +3,8 @@
 
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
-using DevHome.Common;
 using DevHome.Common.Extensions;
+using DevHome.Common.Views;
 using DevHome.Environments.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -13,8 +13,6 @@ namespace DevHome.Environments.Views;
 
 public sealed partial class LandingPage : ToolPage
 {
-    public override string ShortName => "Environments";
-
     public LandingPageViewModel ViewModel { get; }
 
     public LandingPage()
@@ -52,8 +50,8 @@ public sealed partial class LandingPage : ToolPage
     }
 #endif
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _ = ViewModel.LoadModelAsync(false);
+        await ViewModel.LoadModelAsync(false);
     }
 }

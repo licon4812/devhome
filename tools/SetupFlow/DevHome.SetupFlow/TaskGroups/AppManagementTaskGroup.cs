@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
 using DevHome.SetupFlow.Models;
 using DevHome.SetupFlow.Services;
 using DevHome.SetupFlow.ViewModels;
@@ -39,11 +38,6 @@ public class AppManagementTaskGroup : ISetupTaskGroup
 
     public void HandleSearchQuery(string query)
     {
-        var searchParameter = HttpUtility.ParseQueryString(query)["search"];
-        if (!string.IsNullOrEmpty(searchParameter))
-        {
-            var trimmedSearchParameter = searchParameter.Trim('\"');
-            _appManagementViewModel.PerformSearch(trimmedSearchParameter);
-        }
+        _appManagementViewModel.PerformSearch(query);
     }
 }

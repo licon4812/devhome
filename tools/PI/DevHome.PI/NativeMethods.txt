@@ -23,6 +23,9 @@ GetForegroundWindow
 GetMonitorInfo
 GetMonitorInfo
 GetOpenFileName
+GetParent
+GetProcessInformation
+GetScaleFactorForMonitor
 GetTopWindow
 GetWindowInfo
 GetWindowLong
@@ -40,16 +43,22 @@ IsIconic
 IsImmersiveProcess
 IsWindow
 IsWindowVisible
+IsWow64Process2
 IsZoomed
 LoadIcon
 LoadImage
 MessageBox
 MonitorFromWindow
 MoveWindow
+NtQueryInformationProcess
 OpenClipboard
 OpenProcessToken
 RegisterHotKey
 RemoveClipboardFormatListener
+RmRegisterResources
+RmStartSession
+RmGetList
+RmEndSession
 SendMessage
 SetFocus
 SetForegroundWindow
@@ -66,6 +75,7 @@ UnregisterHotKey
 WaitForSingleObject
 WindowFromPoint
 CF_*
+DEVICE_SCALE_FACTOR
 DWMWA_*
 DWMWINDOWATTRIBUTE
 EVENT_*
@@ -85,6 +95,13 @@ INVALID_HANDLE_VALUE
 LR_*
 MOD_*
 // MONITOR_DEFAULTTONEAREST
+PROCESS_BASIC_INFORMATION
+PROCESS_INFORMATION_CLASS
+PROCESS_MACHINE_INFORMATION
+RM_APP_TYPE
+RM_UNIQUE_PROCESS
+RM_PROCESS_INFO
+RM_REBOOT_REASON
 SECTION_FLAGS
 SW_*
 VIRTUAL_KEY
@@ -95,11 +112,3 @@ WINEVENT_OUTOFCONTEXT
 WINEVENT_SKIPOWNPROCESS
 WM_*
 WS_*
-RmRegisterResources
-RmStartSession
-RmGetList
-RmEndSession
-RM_APP_TYPE
-RM_UNIQUE_PROCESS
-RM_PROCESS_INFO
-RM_REBOOT_REASON

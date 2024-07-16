@@ -12,7 +12,7 @@ namespace DevHome.PI.Properties {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "17.9.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "17.10.0.0")]
     internal sealed partial class Settings : global::System.Configuration.ApplicationSettingsBase {
         
         private static Settings defaultInstance = ((Settings)(global::System.Configuration.ApplicationSettingsBase.Synchronized(new Settings())));
@@ -56,6 +56,18 @@ namespace DevHome.PI.Properties {
             }
             set {
                 this["IsProcessFilterIncludeSvcHost"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool IsProcessFilterIncludeEdge {
+            get {
+                return ((bool)(this["IsProcessFilterIncludeEdge"]));
+            }
+            set {
+                this["IsProcessFilterIncludeEdge"] = value;
             }
         }
         
@@ -121,24 +133,6 @@ namespace DevHome.PI.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute(@"<?xml version=""1.0"" encoding=""utf-16""?>
-<ArrayOfString xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"">
-  <string>50</string>
-  <string>350</string>
-  <string>964</string>
-  <string>680</string>
-</ArrayOfString>")]
-        public global::System.Collections.Specialized.StringCollection SettingsToolPosition {
-            get {
-                return ((global::System.Collections.Specialized.StringCollection)(this["SettingsToolPosition"]));
-            }
-            set {
-                this["SettingsToolPosition"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("Default")]
         public string CurrentTheme {
             get {
@@ -170,24 +164,6 @@ namespace DevHome.PI.Properties {
             }
             set {
                 this["IsInsightsOnStartupEnabled"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute(@"<?xml version=""1.0"" encoding=""utf-16""?>
-<ArrayOfString xmlns:xsd=""http://www.w3.org/2001/XMLSchema"" xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance"">
-  <string>70</string>
-  <string>942</string>
-  <string>640</string>
-  <string>222</string>
-</ArrayOfString>")]
-        public global::System.Collections.Specialized.StringCollection ErrorLookupToolPosition {
-            get {
-                return ((global::System.Collections.Specialized.StringCollection)(this["ErrorLookupToolPosition"]));
-            }
-            set {
-                this["ErrorLookupToolPosition"] = value;
             }
         }
         
@@ -226,6 +202,18 @@ namespace DevHome.PI.Properties {
             }
             set {
                 this["ExpandedLargeSize"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool ApplyAppFilteringToData {
+            get {
+                return ((bool)(this["ApplyAppFilteringToData"]));
+            }
+            set {
+                this["ApplyAppFilteringToData"] = value;
             }
         }
     }

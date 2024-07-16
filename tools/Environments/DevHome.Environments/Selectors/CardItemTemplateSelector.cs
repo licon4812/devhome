@@ -4,7 +4,6 @@
 using DevHome.Environments.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.Windows.DevHome.SDK;
 
 namespace DevHome.Environments.Selectors;
 
@@ -12,7 +11,7 @@ public class CardItemTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? CreateComputeSystemOperationTemplate { get; set; }
 
-    public DataTemplate? ComputeSystemTemplate { get; set; }
+    public DataTemplate? PerProviderComputeSystemTemplate { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item)
     {
@@ -36,7 +35,7 @@ public class CardItemTemplateSelector : DataTemplateSelector
         }
         else
         {
-            return ComputeSystemTemplate;
+            return PerProviderComputeSystemTemplate;
         }
     }
 }

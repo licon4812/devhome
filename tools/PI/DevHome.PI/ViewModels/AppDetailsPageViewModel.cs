@@ -19,12 +19,15 @@ public partial class AppDetailsPageViewModel : ObservableObject
     private static readonly ILogger _log = Log.ForContext("SourceContext", nameof(AppDetailsPageViewModel));
 
     [ObservableProperty]
-    private AppRuntimeInfo appInfo;
+    private AppRuntimeInfo _appInfo;
 
     [ObservableProperty]
-    private Visibility runAsAdminVisibility = Visibility.Collapsed;
+    private Visibility _runAsAdminVisibility = Visibility.Collapsed;
 
-    private Process? targetProcess;
+    [ObservableProperty]
+    private Visibility _processRunningParamsVisibility = Visibility.Collapsed;
+
+    private Process? _targetProcess;
 
     public AppDetailsPageViewModel()
     {
@@ -40,46 +43,50 @@ public partial class AppDetailsPageViewModel : ObservableObject
 
     public void UpdateTargetProcess(Process process)
     {
-        if (targetProcess != process)
+        if (_targetProcess != process)
         {
-            targetProcess = process;
+            _targetProcess = process;
             RunAsAdminVisibility = Visibility.Collapsed;
             AppInfo = new();
 
             try
             {
-                AppInfo.ProcessId = targetProcess.Id;
-                AppInfo.IsRunningAsSystem = TargetAppData.Instance.IsRunningAsSystem;
+                AppInfo.ProcessId = _targetProcess.Id;
 
-                if (!process.HasExited)
+                if (process.HasExited)
                 {
-                    AppInfo.BasePriority = targetProcess.BasePriority;
-                    AppInfo.IsRunningAsAdmin = TargetAppData.Instance.IsRunningAsAdmin;
+                    AppInfo.Visibility = Visibility.Collapsed;
+                    ProcessRunningParamsVisibility = Visibility.Collapsed;
+                }
+                else
+                {
                     AppInfo.Visibility = Visibility.Visible;
-                    AppInfo.PriorityClass = (int)targetProcess.PriorityClass;
+                    ProcessRunningParamsVisibility = Visibility.Visible;
+                    AppInfo.IsRunningAsSystem = TargetAppData.Instance.IsRunningAsSystem;
+                    AppInfo.IsRunningAsAdmin = TargetAppData.Instance.IsRunningAsAdmin;
+                    AppInfo.BasePriority = _targetProcess.BasePriority;
+                    AppInfo.PriorityClass = (int)_targetProcess.PriorityClass;
 
-                    if (targetProcess.MainModule != null)
+                    if (_targetProcess.MainModule != null)
                     {
-                        AppInfo.MainModuleFileName = targetProcess.MainModule.FileName;
-                        uint binaryTypeValue;
-
-                        // TODO GetBinaryType only distinguishes x86 from x64. It doesn't allow for ARM or ARM64.
-                        PInvoke.GetBinaryType(AppInfo.MainModuleFileName, out binaryTypeValue);
-                        AppInfo.BinaryType = (WindowHelper.BinaryType)binaryTypeValue;
+                        AppInfo.MainModuleFileName = _targetProcess.MainModule.FileName;
+                        var cpuArchitecture = WindowHelper.GetAppArchitecture(
+                            _targetProcess.SafeHandle, _targetProcess.MainModule.FileName);
+                        AppInfo.CpuArchitecture = cpuArchitecture;
                     }
 
-                    foreach (ProcessModule module in targetProcess.Modules)
+                    foreach (ProcessModule module in _targetProcess.Modules)
                     {
                         AppInfo.CheckFrameworkTypes(module.ModuleName);
                     }
 
-                    AppInfo.IsStoreApp = PInvoke.IsImmersiveProcess(targetProcess.SafeHandle);
+                    AppInfo.IsStoreApp = PInvoke.IsImmersiveProcess(_targetProcess.SafeHandle);
                 }
             }
             catch (Win32Exception ex)
             {
                 // This can throw if the process is running elevated and we are not.
-                _log.Error(ex, "Unable to contruct an AppInfo for target process.");
+                _log.Error(ex, "Unable to construct an AppInfo for target process.");
                 if (ex.NativeErrorCode == (int)Windows.Win32.Foundation.WIN32_ERROR.ERROR_ACCESS_DENIED)
                 {
                     // Hide properties that cannot be retrieved when the target app is elevated and PI is not.
@@ -109,9 +116,9 @@ public partial class AppDetailsPageViewModel : ObservableObject
     [RelayCommand]
     private void RunAsAdmin()
     {
-        if (targetProcess is not null)
+        if (_targetProcess is not null)
         {
-            CommonHelper.RunAsAdmin(targetProcess.Id, nameof(AppDetailsPageViewModel));
+            CommonHelper.RunAsAdmin(_targetProcess.Id, nameof(AppDetailsPageViewModel));
         }
     }
 }

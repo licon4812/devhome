@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using AdaptiveCards.Rendering.WinUI3;
 using CommunityToolkit.Mvvm.Messaging;
-using CommunityToolkit.WinUI;
 using DevHome.SetupFlow.Models.Environments;
 using DevHome.SetupFlow.ViewModels.Environments;
 using Microsoft.UI.Xaml;

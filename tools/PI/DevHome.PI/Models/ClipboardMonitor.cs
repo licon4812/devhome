@@ -3,17 +3,16 @@
 
 using System;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
+using DevHome.Common.Extensions;
 using DevHome.PI.Helpers;
-using Serilog;
+using Microsoft.UI.Xaml;
 using Windows.Win32;
 using Windows.Win32.Foundation;
-using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace DevHome.PI.Models;
 
@@ -159,6 +158,12 @@ internal sealed class ClipboardMonitor : WindowHooker<ClipboardMonitor>, INotify
         return newContents;
     }
 
+    public void Start()
+    {
+        var primaryWindow = Application.Current.GetService<PrimaryWindow>();
+        Start((HWND)primaryWindow.GetWindowHandle());
+    }
+
     public override void Start(HWND hwndUsedForListening)
     {
         base.Start(hwndUsedForListening);
@@ -185,10 +190,10 @@ internal sealed class ClipboardMonitor : WindowHooker<ClipboardMonitor>, INotify
         switch (msg)
         {
             case PInvoke.WM_CLIPBOARDUPDATE:
-            {
-                ThreadPool.QueueUserWorkItem((o) => ClipboardChanged());
-                break;
-            }
+                {
+                    ThreadPool.QueueUserWorkItem((o) => ClipboardChanged());
+                    break;
+                }
         }
 
         return base.CustomWndProc(hWnd, msg, wParam, lParam);

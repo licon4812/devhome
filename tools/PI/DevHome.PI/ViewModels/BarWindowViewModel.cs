@@ -2,33 +2,46 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Linq;
+using System.Diagnostics;
+using System.Globalization;
 using System.Text;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevHome.Common.Extensions;
 using DevHome.PI.Helpers;
 using DevHome.PI.Models;
-using Microsoft.Diagnostics.Tracing.StackSources;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Serilog;
+using Windows.Graphics;
+using Windows.System;
+using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace DevHome.PI.ViewModels;
 
 public partial class BarWindowViewModel : ObservableObject
 {
-    private const string _UnsnapButtonText = "\ue89f";
-    private const string _SnapButtonText = "\ue8a0";
+    private static readonly ILogger _log = Log.ForContext("SourceContext", nameof(BarWindowViewModel));
+
+    private const string UnsnapButtonText = "\ue89f";
+    private const string SnapButtonText = "\ue8a0";
+
+    private readonly string _errorTitleText = CommonHelper.GetLocalizedString("ToolLaunchErrorTitle");
+    private readonly string _unsnapToolTip = CommonHelper.GetLocalizedString("UnsnapToolTip");
+    private readonly string _snapToolTip = CommonHelper.GetLocalizedString("SnapToolTip");
+    private readonly string _expandToolTip = CommonHelper.GetLocalizedString("SwitchToLargeLayoutToolTip");
+    private readonly string _collapseToolTip = CommonHelper.GetLocalizedString("SwitchToSmallLayoutToolTip");
 
     private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcher;
 
     private readonly ObservableCollection<Button> _externalTools = [];
+    private readonly SnapHelper _snapHelper;
 
     [ObservableProperty]
     private string _systemCpuUsage = string.Empty;
@@ -43,13 +56,28 @@ public partial class BarWindowViewModel : ObservableObject
     private bool _isSnappingEnabled = false;
 
     [ObservableProperty]
-    private string _currentSnapButtonText = _SnapButtonText;
+    private string _currentSnapButtonText = SnapButtonText;
+
+    [ObservableProperty]
+    private string _currentSnapToolTip;
+
+    [ObservableProperty]
+    private string _currentExpandToolTip;
 
     [ObservableProperty]
     private string _appCpuUsage = string.Empty;
 
     [ObservableProperty]
-    private Visibility _appBarVisibility = Visibility.Visible;
+    private bool _isAppBarVisible = true;
+
+    [ObservableProperty]
+    private bool _isProcessChooserVisible = false;
+
+    [ObservableProperty]
+    private Visibility _externalToolSeparatorVisibility = Visibility.Collapsed;
+
+    [ObservableProperty]
+    private string _applicationName = string.Empty;
 
     [ObservableProperty]
     private int _applicationPid;
@@ -66,6 +94,17 @@ public partial class BarWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool _showingExpandedContent;
 
+    [ObservableProperty]
+    private bool _isAlwaysOnTop = true;
+
+    [ObservableProperty]
+    private PointInt32 _windowPosition;
+
+    [ObservableProperty]
+    private SizeInt32 _requestedWindowSize;
+
+    internal HWND? ApplicationHwnd { get; private set; }
+
     public BarWindowViewModel()
     {
         _dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
@@ -81,20 +120,42 @@ public partial class BarWindowViewModel : ObservableObject
 
         var process = TargetAppData.Instance.TargetProcess;
 
-        AppBarVisibility = process is null ? Visibility.Collapsed : Visibility.Visible;
-
-        if (process != null)
+        // Show either the result chooser, or the app bar. Not both
+        IsProcessChooserVisible = process is null;
+        IsAppBarVisible = !IsProcessChooserVisible;
+        if (IsAppBarVisible)
         {
+            Debug.Assert(process is not null, "Process should not be null if we're showing the app bar");
+            ApplicationName = process.ProcessName;
             ApplicationPid = process.Id;
             ApplicationIcon = TargetAppData.Instance.Icon;
+            ApplicationHwnd = TargetAppData.Instance.HWnd;
         }
 
-        CurrentSnapButtonText = IsSnapped ? _UnsnapButtonText : _SnapButtonText;
+        CurrentSnapButtonText = IsSnapped ? UnsnapButtonText : SnapButtonText;
+        CurrentSnapToolTip = IsSnapped ? _unsnapToolTip : _snapToolTip;
+        CurrentExpandToolTip = ShowingExpandedContent ? _collapseToolTip : _expandToolTip;
+        _snapHelper = new();
+
+        ((INotifyCollectionChanged)ExternalToolsHelper.Instance.FilteredExternalTools).CollectionChanged += FilteredExternalTools_CollectionChanged;
+        FilteredExternalTools_CollectionChanged(null, null);
+    }
+
+    partial void OnShowingExpandedContentChanged(bool value)
+    {
+        CurrentExpandToolTip = ShowingExpandedContent ? _collapseToolTip : _expandToolTip;
+    }
+
+    private void FilteredExternalTools_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs? e)
+    {
+        // Only show the separator if we're showing pinned tools
+        ExternalToolSeparatorVisibility = ExternalToolsHelper.Instance.FilteredExternalTools.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     partial void OnIsSnappedChanged(bool value)
     {
-        CurrentSnapButtonText = IsSnapped ? _UnsnapButtonText : _SnapButtonText;
+        CurrentSnapButtonText = IsSnapped ? UnsnapButtonText : SnapButtonText;
+        CurrentSnapToolTip = IsSnapped ? _unsnapToolTip : _snapToolTip;
     }
 
     partial void OnBarOrientationChanged(Orientation value)
@@ -102,7 +163,7 @@ public partial class BarWindowViewModel : ObservableObject
         if (value == Orientation.Horizontal)
         {
             // If we were snapped, unsnap
-            IsSnapped = false;
+            UnsnapBarWindow();
         }
         else
         {
@@ -111,8 +172,20 @@ public partial class BarWindowViewModel : ObservableObject
         }
     }
 
+    public void ResetBarWindowOnTop()
+    {
+        // If we're snapped to a target window, and that window loses and then regains focus,
+        // we need to bring our window to the front also, to be in-sync. Otherwise, we can
+        // end up with the target in the foreground, but our window partially obscured.
+        // We set IsAlwaysOnTop to true to get it in foreground and then set to false,
+        // this ensures we don't steal focus from target window and at the same time
+        // bar window is not partially obscured.
+        IsAlwaysOnTop = true;
+        IsAlwaysOnTop = false;
+    }
+
     [RelayCommand]
-    public void SwitchLayoutCommand()
+    public void RotateLayout()
     {
         if (BarOrientation == Orientation.Horizontal)
         {
@@ -124,27 +197,39 @@ public partial class BarWindowViewModel : ObservableObject
         }
     }
 
+    public void SnapBarWindow()
+    {
+        // First need to be in a Vertical layout
+        BarOrientation = Orientation.Vertical;
+        _snapHelper.Snap();
+        IsSnapped = true;
+    }
+
+    public void UnsnapBarWindow()
+    {
+        _snapHelper.Unsnap();
+        IsSnapped = false;
+    }
+
     [RelayCommand]
-    public void PerformSnapCommand()
+    public void ToggleSnap()
     {
         if (IsSnapped)
         {
-            IsSnapped = false;
+            UnsnapBarWindow();
         }
         else
         {
-            // First need to be in a Vertical layout
-            BarOrientation = Orientation.Vertical;
-            IsSnapped = true;
+            SnapBarWindow();
         }
     }
 
     [RelayCommand]
-    public void ShowBigWindowCommand()
+    public void ToggleExpandedContentVisibility()
     {
         if (!ShowingExpandedContent)
         {
-            // First need to be in a horizontal layout
+            // First need to be in a horizontal layout to show expanded content
             BarOrientation = Orientation.Horizontal;
             ShowingExpandedContent = true;
         }
@@ -155,24 +240,55 @@ public partial class BarWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void ProcessChooserCommand()
+    public void ProcessChooser()
     {
-        // Need to be in a horizontal layout
-        BarOrientation = Orientation.Horizontal;
-
-        // And show expanded content
-        ShowingExpandedContent = true;
+        ToggleExpandedContentVisibility();
 
         // And navigate to the appropriate page
         var barWindow = Application.Current.GetService<PrimaryWindow>().DBarWindow;
         barWindow?.NavigateTo(typeof(ProcessListPageViewModel));
     }
 
+    [RelayCommand]
+    public void LaunchInsights()
+    {
+        ToggleExpandedContentVisibility();
+
+        // And navigate to the appropriate page
+        var barWindow = Application.Current.GetService<PrimaryWindow>().DBarWindow;
+        barWindow?.NavigateTo(typeof(InsightsPageViewModel));
+    }
+
+    [RelayCommand]
+    public void ManageExternalToolsButton()
+    {
+        ToggleExpandedContentVisibility();
+
+        var barWindow = Application.Current.GetService<PrimaryWindow>().DBarWindow;
+        barWindow?.NavigateToPiSettings(typeof(AdditionalToolsViewModel).FullName!);
+    }
+
+    [RelayCommand]
+    public void DetachFromProcess()
+    {
+        TargetAppData.Instance.ClearAppData();
+    }
+
     private void TargetApp_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(TargetAppData.HWnd))
         {
-            IsSnappingEnabled = TargetAppData.Instance.HWnd != HWND.Null;
+            _dispatcher.TryEnqueue(() =>
+            {
+                IsSnappingEnabled = TargetAppData.Instance.HWnd != HWND.Null;
+
+                // If snapped, retarget to the new window
+                if (IsSnapped)
+                {
+                    _snapHelper.Unsnap();
+                    _snapHelper.Snap();
+                }
+            });
         }
         else if (e.PropertyName == nameof(TargetAppData.TargetProcess))
         {
@@ -180,13 +296,17 @@ public partial class BarWindowViewModel : ObservableObject
 
             _dispatcher.TryEnqueue(() =>
             {
-                // The App status bar is only visibile if we're attached to a process
-                AppBarVisibility = process is null ? Visibility.Collapsed : Visibility.Visible;
+                // The App status bar is only visible if we're attached to a result
+                IsAppBarVisible = process is not null;
 
                 if (process is not null)
                 {
                     ApplicationPid = process.Id;
+                    ApplicationName = process.ProcessName;
                 }
+
+                // Conversely, the result chooser is only visible if we're not attached to a result
+                IsProcessChooserVisible = process is null;
             });
         }
         else if (e.PropertyName == nameof(TargetAppData.Icon))
@@ -235,5 +355,49 @@ public partial class BarWindowViewModel : ObservableObject
                 AppCpuUsage = CommonHelper.GetLocalizedString("CpuPerfTextFormatNoLabel", PerfCounters.Instance.CpuUsage);
             });
         }
+    }
+
+    public void ExternalToolButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button clickedButton)
+        {
+            if (clickedButton.Tag is ExternalTool tool)
+            {
+                InvokeTool(tool, TargetAppData.Instance.TargetProcess?.Id, TargetAppData.Instance.HWnd);
+            }
+        }
+    }
+
+    public void ManageExternalToolsButton_ExternalToolLaunchRequest(object sender, ExternalTool tool)
+    {
+        InvokeTool(tool, TargetAppData.Instance.TargetProcess?.Id, TargetAppData.Instance.HWnd);
+    }
+
+    private async void InvokeTool(ExternalTool tool, int? pid, HWND hWnd)
+    {
+        try
+        {
+            var process = await tool.Invoke(pid, hWnd);
+        }
+        catch (Exception ex)
+        {
+            _log.Error(ex, "Tool launched failed");
+
+            var builder = new StringBuilder();
+            builder.AppendLine(ex.Message);
+            if (ex.InnerException is not null)
+            {
+                builder.AppendLine(ex.InnerException.Message);
+            }
+
+            var errorMessage = string.Format(CultureInfo.CurrentCulture, builder.ToString(), tool.Executable);
+            PInvoke.MessageBox(HWND.Null, errorMessage, _errorTitleText, MESSAGEBOX_STYLE.MB_ICONERROR);
+        }
+    }
+
+    [RelayCommand]
+    public void LaunchAdvancedAppsPageInWindowsSettings()
+    {
+        _ = Launcher.LaunchUriAsync(new("ms-settings:advanced-apps"));
     }
 }

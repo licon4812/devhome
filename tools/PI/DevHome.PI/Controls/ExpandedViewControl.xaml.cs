@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 using System;
-using DevHome.Common.Extensions;
-using DevHome.PI.Properties;
-using DevHome.PI.SettingsUi;
 using DevHome.PI.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 
 namespace DevHome.PI.Controls;
 
@@ -33,7 +31,16 @@ public sealed partial class ExpandedViewControl : UserControl
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        SettingsToolWindow settingsTool = new(Settings.Default.SettingsToolPosition, null);
-        settingsTool.Activate();
+        NavigateToSettings(typeof(SettingsPageViewModel).FullName!);
+    }
+
+    public void NavigateToSettings(string viewModelType)
+    {
+        viewModel.NavigateToSettings(viewModelType);
+    }
+
+    private void GridSplitter_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
     }
 }

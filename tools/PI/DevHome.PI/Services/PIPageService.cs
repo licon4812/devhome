@@ -24,8 +24,15 @@ internal sealed class PIPageService : IPageService
         Configure<ModulesPageViewModel, ModulesPage>();
         Configure<ProcessListPageViewModel, ProcessListPage>();
         Configure<ResourceUsagePageViewModel, ResourceUsagePage>();
-        Configure<WatsonPageViewModel, WatsonsPage>();
+        Configure<WERPageViewModel, WERPage>();
         Configure<WinLogsPageViewModel, WinLogsPage>();
+        Configure<SettingsPageViewModel, SettingsPage>();
+
+        // Settings sub-pages.
+        Configure<PreferencesViewModel, PreferencesPage>();
+        Configure<AdditionalToolsViewModel, AdditionalToolsPage>();
+        Configure<AdvancedSettingsViewModel, AdvancedSettingsPage>();
+        Configure<AboutViewModel, AboutPage>();
     }
 
     public Type GetPageType(string key)

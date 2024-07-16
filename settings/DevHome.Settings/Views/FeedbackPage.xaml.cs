@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using System.Web;
 using DevHome.Common.Extensions;
 using DevHome.Common.Services;
+using DevHome.Common.Views;
+using DevHome.Services.Core.Contracts;
 using DevHome.Settings.ViewModels;
 using Microsoft.Management.Infrastructure;
 using Microsoft.UI.Xaml;
@@ -24,7 +26,7 @@ namespace DevHome.Settings.Views;
 /// <summary>
 /// An empty page that can be used on its own or navigated to within a Frame.
 /// </summary>
-public sealed partial class FeedbackPage : Page
+public sealed partial class FeedbackPage : DevHomePage
 {
     private static readonly double ByteSizeGB = 1024 * 1024 * 1024;
     private static string wmiCPUInfo = string.Empty;
@@ -247,7 +249,7 @@ public sealed partial class FeedbackPage : Page
 
         MEMORYSTATUSEX memStatus = default;
         memStatus.dwLength = (uint)Marshal.SizeOf(typeof(MEMORYSTATUSEX));
-        PInvoke.GlobalMemoryStatusEx(out memStatus);
+        PInvoke.GlobalMemoryStatusEx(ref memStatus);
 
         var availMemKbToGb = Math.Round(memStatus.ullAvailPhys / ByteSizeGB, 2);
         var totalMemKbToGb = Math.Round(memStatus.ullTotalPhys / ByteSizeGB, 2);

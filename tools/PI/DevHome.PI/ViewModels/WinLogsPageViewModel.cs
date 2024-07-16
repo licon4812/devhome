@@ -43,6 +43,15 @@ public partial class WinLogsPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool isETWLogsEnabled;
 
+    [ObservableProperty]
+    private bool isDebugOutputEnabled;
+
+    [ObservableProperty]
+    private bool isEventViewerEnabled = true;
+
+    [ObservableProperty]
+    private bool isWEREnabled = true;
+
     private Process? targetProcess;
     private WinLogsHelper? winLogsHelper;
 
@@ -79,8 +88,9 @@ public partial class WinLogsPageViewModel : ObservableObject, IDisposable
             {
                 if (!process.HasExited)
                 {
+                    IsETWLogsEnabled = ETWHelper.IsUserInPerformanceLogUsersGroup();
                     winLogsHelper = new WinLogsHelper(targetProcess, winLogsOutput);
-                    IsETWLogsEnabled = winLogsHelper.IsETWEnabled;
+                    winLogsHelper.Start(IsETWLogsEnabled, IsDebugOutputEnabled, IsEventViewerEnabled, IsWEREnabled);
                 }
             }
             catch (Win32Exception ex)
@@ -193,6 +203,7 @@ public partial class WinLogsPageViewModel : ObservableObject, IDisposable
         {
             if (newInsight is not null)
             {
+                newInsight.IsExpanded = true;
                 var insightsPageViewModel = Application.Current.GetService<InsightsPageViewModel>();
                 insightsPageViewModel.AddInsight(newInsight);
                 InsightsButtonVisibility = Visibility.Visible;
