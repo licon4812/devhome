@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using DevHome.Common.Contracts;
+using DevHome.Common.Extensions;
 using DevHome.Common.Services;
 using DevHome.Common.TelemetryEvents;
 using DevHome.Telemetry;
+using Microsoft.UI.Xaml;
 
 namespace DevHome.Common.Models;
 
@@ -21,16 +23,25 @@ public partial class ExperimentalFeature : ObservableObject
 
     public string Id { get; init; }
 
+    public string OpenPageKey { get; init; }
+
+    public string OpenPageParameter { get; init; }
+
+    public bool NeedsFeaturePresenceCheck { get; init; }
+
     public bool IsVisible { get; init; }
 
     public static ILocalSettingsService? LocalSettingsService { get; set; }
 
     public static IQuickstartSetupService? QuickstartSetupService { get; set; }
 
-    public ExperimentalFeature(string id, bool enabledByDefault, bool visible = true)
+    public ExperimentalFeature(string id, bool enabledByDefault, bool needsFeaturePresenceCheck, string openPageKey, string openPageParameter, bool visible = true)
     {
         Id = id;
+        OpenPageKey = openPageKey;
+        OpenPageParameter = openPageParameter;
         _isEnabledByDefault = enabledByDefault;
+        NeedsFeaturePresenceCheck = needsFeaturePresenceCheck;
         IsVisible = visible;
 
         IsEnabled = CalculateEnabled();
@@ -83,6 +94,15 @@ public partial class ExperimentalFeature : ObservableObject
             {
                 await QuickstartSetupService!.InstallDevHomeAzureExtensionAsync();
             }
+        }
+    }
+
+    [RelayCommand]
+    public void Open()
+    {
+        if (OpenPageKey != null)
+        {
+            Application.Current.GetService<INavigationService>().NavigateTo(OpenPageKey, OpenPageParameter);
         }
     }
 }

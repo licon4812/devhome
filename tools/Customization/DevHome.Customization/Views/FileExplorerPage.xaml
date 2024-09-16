@@ -1,4 +1,4 @@
-<commonViews:DevHomePage
+<commonViews:ToolPage
     x:Class="DevHome.Customization.Views.FileExplorerPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -8,9 +8,13 @@
     behaviors:NavigationViewHeaderBehavior.HeaderTemplate="{StaticResource BreadcrumbBarDataTemplate}"
     behaviors:NavigationViewHeaderBehavior.HeaderContext="{x:Bind ViewModel}">
 
-    <Grid MaxWidth="{ThemeResource MaxPageContentWidth}" Margin="{ThemeResource ContentPageMargin}">
-        <ScrollView VerticalAlignment="Top">
-            <views:FileExplorerView />
-        </ScrollView>
-    </Grid>
-</commonViews:DevHomePage>
+    <ScrollViewer VerticalAlignment="Top" VerticalScrollBarVisibility="Auto">
+        <Grid>
+            <StackPanel MaxWidth="{ThemeResource MaxPageContentWidth}" Margin="{ThemeResource ContentPageMargin}">
+                <views:FileExplorerView />
+                <views:VersionControlIntegrationSettingsView Visibility="{x:Bind ViewModel.IsFeatureEnabled}"/>
+                <views:AddRepositoriesView Visibility="{x:Bind ViewModel.IsFeatureEnabled}"/>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</commonViews:ToolPage>

@@ -135,7 +135,7 @@ internal sealed class RepositoryProvider
     /// <remarks>
     /// Can be null if the provider can't parse the Uri.
     /// </remarks>
-    public IRepository GetRepositoryFromUri(Uri uri, IDeveloperId developerId = null)
+    public RepositoryResult GetRepositoryFromUri(Uri uri, IDeveloperId developerId = null)
     {
         RepositoryResult getResult;
         if (developerId == null)
@@ -147,14 +147,7 @@ internal sealed class RepositoryProvider
             getResult = _repositoryProvider.GetRepositoryFromUriAsync(uri, developerId).AsTask().Result;
         }
 
-        if (getResult.Result.Status == ProviderOperationStatus.Failure)
-        {
-            _log.Information("Could not get repo from Uri.");
-            _log.Information(getResult.Result.DisplayMessage);
-            return null;
-        }
-
-        return getResult.Repository;
+        return getResult;
     }
 
     /// <summary>
@@ -252,10 +245,13 @@ internal sealed class RepositoryProvider
                 else
                 {
                     _log.Error(result.Result.ExtendedError, $"Could not get repositories.  Message: {result.Result.DisplayMessage}");
+                    TelemetryFactory.Get<ITelemetry>().Log("RepoTool_SearchForRepos_Event", LogLevel.Critical, new GetReposEvent(result.Result.ExtendedError, _repositoryProvider.DisplayName, developerId));
                 }
             }
             else
             {
+                TelemetryFactory.Get<ITelemetry>().Log("RepoTool_SearchForRepos_Event", LogLevel.Critical, new GetReposEvent("UsingIRepositoryProvider", _repositoryProvider.DisplayName, developerId));
+
                 // Fallback in case this is called with IRepositoryProvider.
                 RepositoriesResult result = _repositoryProvider.GetRepositoriesAsync(developerId).AsTask().Result;
                 if (result.Result.Status == ProviderOperationStatus.Success)
@@ -265,6 +261,7 @@ internal sealed class RepositoryProvider
                 else
                 {
                     _log.Error(result.Result.ExtendedError, $"Could not get repositories.  Message: {result.Result.DisplayMessage}");
+                    TelemetryFactory.Get<ITelemetry>().Log("RepoTool_SearchForRepos_Event", LogLevel.Critical, new GetReposEvent(result.Result.ExtendedError, _repositoryProvider.DisplayName, developerId));
                 }
             }
         }
@@ -278,11 +275,13 @@ internal sealed class RepositoryProvider
             else
             {
                 _log.Information(aggregateException.ToString());
+                TelemetryFactory.Get<ITelemetry>().Log("RepoTool_SearchForRepos_Event", LogLevel.Critical, new GetReposEvent(aggregateException, _repositoryProvider.DisplayName, developerId));
             }
         }
         catch (Exception ex)
         {
             _log.Error(ex, $"Could not get repositories.  Message: {ex}");
+            TelemetryFactory.Get<ITelemetry>().Log("RepoTool_SearchForRepos_Event", LogLevel.Critical, new GetReposEvent(ex, _repositoryProvider.DisplayName, developerId));
         }
 
         _repositories[developerId] = repoSearchInformation.Repositories;
@@ -301,10 +300,12 @@ internal sealed class RepositoryProvider
             if (result.Result.Status == ProviderOperationStatus.Success)
             {
                 repoSearchInformation.Repositories = result.Repositories;
+                throw new ArgumentNullException(nameof(developerId));
             }
             else
             {
                 _log.Error(result.Result.ExtendedError, $"Could not get repositories.  Message: {result.Result.DisplayMessage}");
+                TelemetryFactory.Get<ITelemetry>().Log("RepoTool_GetAllRepos_Event", LogLevel.Critical, new GetReposEvent(result.Result.ExtendedError, _repositoryProvider.DisplayName, developerId));
             }
         }
         catch (AggregateException aggregateException)
@@ -312,16 +313,18 @@ internal sealed class RepositoryProvider
             // Because tasks can be canceled DevHome should emit different logs.
             if (aggregateException.InnerException is OperationCanceledException)
             {
-                _log.Information($"Get Repos operation was cancalled.");
+                _log.Information($"Get Repos operation was cancelled.");
             }
             else
             {
                 _log.Error(aggregateException, aggregateException.Message);
+                TelemetryFactory.Get<ITelemetry>().Log("RepoTool_GetAllRepos_Event", LogLevel.Critical, new GetReposEvent(aggregateException, _repositoryProvider.DisplayName, developerId));
             }
         }
         catch (Exception ex)
         {
             _log.Error(ex, $"Could not get repositories.  Message: {ex}");
+            TelemetryFactory.Get<ITelemetry>().Log("RepoTool_GetAllRepos_Event", LogLevel.Critical, new GetReposEvent(ex, _repositoryProvider.DisplayName, developerId));
         }
 
         _repositories[developerId] = repoSearchInformation.Repositories;

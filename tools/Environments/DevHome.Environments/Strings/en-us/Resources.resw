@@ -265,19 +265,19 @@
     <value>Manage environments:</value>
     <comment>Header text for the cards that in the UI that are not being created.</comment>
   </data>
-  <data name="DeleteEnviroment_CancelButton" xml:space="preserve">
+  <data name="DeleteEnvironment_CancelButton" xml:space="preserve">
     <value>Cancel</value>
     <comment>Text for the cancel button of the delete environment confirmation popup.</comment>
   </data>
-  <data name="DeleteEnviroment_ConfirmButton" xml:space="preserve">
+  <data name="DeleteEnvironment_ConfirmButton" xml:space="preserve">
     <value>Delete</value>
     <comment>Text for the delete confirmation button of the delete environment confirmation popup.</comment>
   </data>
-  <data name="DeleteEnviroment_Content" xml:space="preserve">
+  <data name="DeleteEnvironment_Content" xml:space="preserve">
     <value>Choosing to delete your environment will remove it permanently.</value>
     <comment>Text for the content of the delete environment confirmation popup.</comment>
   </data>
-  <data name="DeleteEnviroment_Title" xml:space="preserve">
+  <data name="DeleteEnvironment_Title" xml:space="preserve">
     <value>Do you want to delete your environment?</value>
     <comment>Text for the title of the delete environment confirmation popup.</comment>
   </data>
@@ -343,12 +343,24 @@
     <value>Go to extensions library</value>
     <comment>Text for when the environment page in Dev Home is empty and the user has no extensions installed that support environments</comment>
   </data>
-  <data name="MoreOptionsButtonName" xml:space="preserve">
-    <value>More Options</value>
-    <comment>The text narrator should say for the ... button</comment>
-  </data>
   <data name="SyncEnvironmentsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Sync</value>
     <comment>Accessible name for the button to sync environments.</comment>
+  </data>
+  <data name="MoreOptionsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>More options</value>
+    <comment>ToolTip for the button that displays "More Options" menu</comment>
+  </data>
+  <data name="MoreOptionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>More options</value>
+    <comment>Name of the button that brings up the "More options" menu</comment>
+  </data>
+  <data name="Operations_ApplyConfiguration" xml:space="preserve">
+    <value>Set up</value>
+    <comment>Value to be shown in the button option to start the configuration flow</comment>
+  </data>
+  <data name="MoreOptionsButtonName" xml:space="preserve">
+    <value>More options</value>
+    <comment>Name for MoreOptionsButton. It's listed as an additional string here because ComputeSystemCardBase can't access MoreOptionsButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name (reason unknown)</comment>
   </data>
 </root>

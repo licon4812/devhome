@@ -1,7 +1,7 @@
 <!-- Copyright (c) Microsoft Corporation.. -->
 <!-- Licensed under the MIT License. -->
 
-<commonviews:DevHomePage
+<commonviews:ToolPage
     x:Class="DevHome.ExtensionLibrary.Views.ExtensionSettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -14,7 +14,12 @@
 
     <Grid>
         <ScrollViewer VerticalAlignment="Top">
-            <StackPanel MaxWidth="{ThemeResource MaxPageContentWidth}" Margin="{ThemeResource ContentPageMargin}">
+            <StackPanel MaxWidth="{ThemeResource MaxPageContentWidth}"
+                        Margin="{ThemeResource ContentPageMargin}"
+                        Background="{ThemeResource WidgetCardBackground}"
+                        BorderBrush="{ThemeResource WidgetCardBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource ControlCornerRadius}">
                 <commonviews:ExtensionAdaptiveCardPanel x:Name="SettingsContent">
                     <i:Interaction.Behaviors>
                         <ic:EventTriggerBehavior EventName="Loaded">
@@ -25,4 +30,4 @@
             </StackPanel>
         </ScrollViewer>
     </Grid>
-</commonviews:DevHomePage>
+</commonviews:ToolPage>

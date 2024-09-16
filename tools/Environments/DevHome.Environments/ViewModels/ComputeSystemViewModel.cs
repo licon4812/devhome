@@ -14,6 +14,7 @@ using DevHome.Common.Environments.Helpers;
 using DevHome.Common.Environments.Models;
 using DevHome.Common.Environments.Services;
 using DevHome.Common.Services;
+using DevHome.Common.TelemetryEvents;
 using DevHome.Common.TelemetryEvents.Environments;
 using DevHome.Common.TelemetryEvents.SetupFlow.Environments;
 using DevHome.Environments.Helpers;
@@ -58,6 +59,8 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
 
     private bool _disposedValue;
 
+    private Action<ComputeSystemReviewItem>? _configurationAction;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ComputeSystemViewModel"/> class.
     /// This class requires a 3-step initialization:
@@ -73,6 +76,7 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
         IComputeSystem system,
         ComputeSystemProvider provider,
         Func<ComputeSystemCardBase, bool> removalAction,
+        Action<ComputeSystemReviewItem>? configurationAction,
         string packageFullName,
         Window window)
     {
@@ -83,6 +87,7 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
         ComputeSystem = new(system);
         PackageFullName = packageFullName;
         _removalAction = removalAction;
+        _configurationAction = configurationAction;
         _stringResource = new StringResource("DevHome.Environments.pri", "DevHome.Environments/Resources");
     }
 
@@ -133,7 +138,9 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             ShouldShowDotOperations = false;
             ShouldShowSplitButton = false;
 
-            RegisterForAllOperationMessages(DataExtractor.FillDotButtonOperations(ComputeSystem, _mainWindow), DataExtractor.FillLaunchButtonOperations(ComputeSystem));
+            RegisterForAllOperationMessages(
+                DataExtractor.FillDotButtonOperations(ComputeSystem, _mainWindow),
+                DataExtractor.FillLaunchButtonOperations(_provider, ComputeSystem, _configurationAction));
 
             _ = Task.Run(async () =>
             {
@@ -217,6 +224,7 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
         }
 
         var properties = await ComputeSystemHelpers.GetComputeSystemCardPropertiesAsync(ComputeSystem!, PackageFullName);
+
         if (!ComputeSystemHelpers.RemoveAllItemsAndReplace(Properties, properties))
         {
             Properties = new(properties);
@@ -269,15 +277,16 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_Launch_Event",
                 LogLevel.Critical,
-                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, EnvironmentsTelemetryStatus.Started));
+                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, EnvironmentsTelemetryStatus.Started, new TelemetryResult()));
 
             var operationResult = await ComputeSystem.ConnectAsync(string.Empty);
 
-            var (displayMessage, diagnosticText, telemetryStatus) = ComputeSystemHelpers.LogResult(operationResult?.Result, _log);
+            var (displayMessage, _, telemetryStatus) = ComputeSystemHelpers.LogResult(operationResult?.Result, _log);
+            var telemetryResult = new TelemetryResult(operationResult?.Result);
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_Launch_Event",
                 LogLevel.Critical,
-                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, telemetryStatus, displayMessage, diagnosticText));
+                new EnvironmentLaunchEvent(ComputeSystem.AssociatedProviderId.Value, telemetryStatus, telemetryResult));
 
             if (telemetryStatus == EnvironmentsTelemetryStatus.Failed)
             {
@@ -319,10 +328,17 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
 
             _log.Information($"operation '{data.ComputeSystemOperation}' starting for Compute System: {Name}");
 
+            var telemetryPayload = new EnvironmentOperationEvent(
+                EnvironmentsTelemetryStatus.Started,
+                data.ComputeSystemOperation,
+                providerId,
+                new TelemetryResult(),
+                data.AdditionalContext);
+
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_OperationInvoked_Event",
-                LogLevel.Measure,
-                new EnvironmentOperationEvent(EnvironmentsTelemetryStatus.Started, data.ComputeSystemOperation, providerId, data.AdditionalContext),
+                LogLevel.Critical,
+                telemetryPayload,
                 relatedActivityId: message.Value.ActivityId);
         });
     }
@@ -340,11 +356,12 @@ public partial class ComputeSystemViewModel : ComputeSystemCardBase, IRecipient<
             _log.Information($"operation '{data.ComputeSystemOperation}' completed for Compute System: {Name}");
 
             var providerId = ComputeSystem.AssociatedProviderId.Value;
-            var (displayMessage, diagnosticText, telemetryStatus) = ComputeSystemHelpers.LogResult(data.OperationResult.Result, _log);
+            var (displayMessage, _, telemetryStatus) = ComputeSystemHelpers.LogResult(data.OperationResult.Result, _log);
+            var telemetryResult = new TelemetryResult(data.OperationResult.Result);
             TelemetryFactory.Get<ITelemetry>().Log(
                 "Environment_OperationInvoked_Event",
-                LogLevel.Measure,
-                new EnvironmentOperationEvent(telemetryStatus, data.ComputeSystemOperation, providerId, data.AdditionalContext, displayMessage, diagnosticText),
+                LogLevel.Critical,
+                new EnvironmentOperationEvent(telemetryStatus, data.ComputeSystemOperation, providerId, telemetryResult, data.AdditionalContext),
                 relatedActivityId: message.Value.ActivityId);
         });
     }

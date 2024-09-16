@@ -6,7 +6,6 @@ namespace DevHome.Common.Environments.Scripts;
 public static class HyperVSetupScript
 {
     public const string SetupFunction = @"
-            
             # For cmdlet operation results so we can compare results and choose the right exit code
             enum OperationStatus
             {
@@ -33,62 +32,52 @@ public static class HyperVSetupScript
             #>
         function Initialize-HyperVForDevHome()
         {
+            param ([Parameter(Mandatory=$true)][string]$user)
             $featureEnablementResult = [OperationStatus]::OperationNotRun
             $adminGroupResult = [OperationStatus]::OperationNotRun
             $hyperVGroupSid = 'S-1-5-32-578'
-
-            # Check the security token the user logged on with contains the Hyper-V Administrators group SID (S-1-5-32-578). This can only be updated,
-            # once the user logs off and on again. Even if we add the user to the group later on in the script.
-            $foundSecurityTokenString = [System.Security.Principal.WindowsIdentity]::GetCurrent().Groups.Value | Where-Object { $_ -eq $hyperVGroupSid }
-            $doesUserSecurityTokenContainHyperAdminGroup = $foundSecurityTokenString -eq $hyperVGroupSid
 
             # Check if the Hyper-V feature is enabled
             $featureState = Get-WindowsOptionalFeature -FeatureName 'Microsoft-Hyper-V' -Online | Select-Object -ExpandProperty State
             $featureEnabled = $featureState -eq 'Enabled'
 
-            if ($doesUserSecurityTokenContainHyperAdminGroup -and $featureEnabled)
-            {
-                # User already in Admin group and feature already enabled
-                exit 6
-            }
-
             # Enable the Hyper-V feature if it is not already enabled
             if (-not $featureEnabled)
             {
                 $dsimHyperVFeature = Enable-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Hyper-V' -All -NoRestart
-                
+
                 # when $dsimHyperVFeature is not null we've enabled the feature successfully
                 if ($null -ne $dsimHyperVFeature)
                 {
                     # Hyper-V feature enabled successfully.
-                    $featureEnablementResult = [OperationStatus]::OperationSucceeded 
+                    $featureEnablementResult = [OperationStatus]::OperationSucceeded
                 }
                 else
-                {    
+                {
                     # Failed to enable the Hyper-V feature.
-                    $featureEnablementResult = [OperationStatus]::OperationFailed 
+                    $featureEnablementResult = [OperationStatus]::OperationFailed
                 }
             }
 
             # Check the Hyper-V Administrators group to see if the user is inside the group
-            $userGroupObject = Get-LocalGroupMember -Sid $hyperVGroupSid | Where-Object { $_.Name -eq ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) }
+            $userGroupObject = Get-LocalGroupMember -Sid $hyperVGroupSid | Where-Object { $_.Name -eq $user }
             $isUserInGroup = $null -ne $userGroupObject
-            
+
             # Add user to Hyper-v Administrators group if they aren't already in the group
-            if (-not $isUserInGroup) 
+            if (-not $isUserInGroup)
             {
-                Add-LocalGroupMember -Sid $hyperVGroupSid -Member ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+                Add-LocalGroupMember -Sid $hyperVGroupSid -Member $user
 
                 # Check if the last command succeeded
                 if ($?)
                 {
                     # User added to the Hyper-V Administrators group.
-                    $adminGroupResult = [OperationStatus]::OperationSucceeded 
+                    $adminGroupResult = [OperationStatus]::OperationSucceeded
                 }
                 else
                 {
                     # Failed to add user to the Hyper-V Administrators group.
-                    $adminGroupResult = [OperationStatus]::OperationFailed 
+                    $adminGroupResult = [OperationStatus]::OperationFailed
                 }
             }
 
@@ -132,6 +121,5 @@ public static class HyperVSetupScript
         }
 
         # Run script
-        Initialize-HyperVForDevHome
-        ";
+        Initialize-HyperVForDevHome";
 }

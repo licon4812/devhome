@@ -12,8 +12,11 @@ using DevHome.Common.Services;
 using DevHome.Contracts.Services;
 using DevHome.Customization.Extensions;
 using DevHome.Dashboard.Extensions;
+using DevHome.Database.Extensions;
 using DevHome.ExtensionLibrary.Extensions;
 using DevHome.Helpers;
+using DevHome.RepositoryManagement.Extensions;
+using DevHome.RepositoryManagement.ViewModels;
 using DevHome.Services;
 using DevHome.Services.Core.Extensions;
 using DevHome.Services.DesiredStateConfiguration.Extensions;
@@ -22,6 +25,7 @@ using DevHome.Settings.Extensions;
 using DevHome.SetupFlow.Extensions;
 using DevHome.SetupFlow.Services;
 using DevHome.Telemetry;
+using DevHome.TelemetryEvents;
 using DevHome.Utilities.Extensions;
 using DevHome.ViewModels;
 using DevHome.Views;
@@ -95,6 +99,9 @@ public partial class App : Application, IApp
         }).
         ConfigureServices((context, services) =>
         {
+            // Add databse connection
+            services.AddDatabaseContext(context);
+
             // Add Serilog logging for ILogger.
             services.AddLogging(lb => lb.AddSerilog(dispose: true));
 
@@ -159,6 +166,9 @@ public partial class App : Application, IApp
             // Setup flow
             services.AddSetupFlow(context);
 
+            // Repository Management
+            services.AddRepositoryManagement(context);
+
             // Dashboard
             services.AddDashboard(context);
 
@@ -178,6 +188,9 @@ public partial class App : Application, IApp
 
         UnhandledException += App_UnhandledException;
         AppInstance.GetCurrent().Activated += OnActivated;
+
+        TelemetryFactory.Get<ITelemetry>().Log("DevHome_Started_Event", LogLevel.Critical, new DevHomeStartedEvent());
+        Log.Information("Dev Home Started.");
     }
 
     public void ShowMainWindow()
@@ -209,7 +222,7 @@ public partial class App : Application, IApp
         Environment.FailFast(e.Message, e.Exception);
     }
 
-    protected async override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected async override void OnLaunched(LaunchActivatedEventArgs args)
     {
         base.OnLaunched(args);
         await Task.WhenAll(

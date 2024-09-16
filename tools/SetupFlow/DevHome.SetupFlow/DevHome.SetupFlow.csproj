@@ -5,11 +5,9 @@
     <Platforms>x86;x64;arm64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
-    <Configurations>Debug;Release;Debug_FailFast</Configurations>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LibGit2Sharp" Version="0.27.0-preview-0182" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.2428" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.106">
       <PrivateAssets>all</PrivateAssets>
@@ -20,8 +18,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\common\DevHome.Common.csproj" />
+    <ProjectReference Include="..\..\..\database\DevHome.Database\DevHome.Database.csproj" />
     <ProjectReference Include="..\..\..\services\DevHome.Services.DesiredStateConfiguration\DevHome.Services.DesiredStateConfiguration.csproj" />
     <ProjectReference Include="..\..\..\services\DevHome.Services.WindowsPackageManager\DevHome.Services.WindowsPackageManager.csproj" />
+    <ProjectReference Include="..\..\RepositoryManagement\DevHome.RepositoryManagement\DevHome.RepositoryManagement.csproj" />
     <ProjectReference Include="..\DevHome.SetupFlow.Common\DevHome.SetupFlow.Common.csproj" />
     <ProjectReference Include="..\DevHome.SetupFlow.ElevatedComponent.Projection\DevHome.SetupFlow.ElevatedComponent.Projection.csproj">
       <Aliases>Projection</Aliases>
@@ -284,9 +284,9 @@
     <Content Update="Assets\Setup_EndToEnd.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-	<Content Update="Assets\Setup_QuickstartPlayground.png">
+    <Content Update="Assets\Setup_QuickstartPlayground.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-	</Content>
+    </Content>
     <Content Update="Assets\Setup_RepoConfig.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

@@ -13,6 +13,7 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <PlatformTarget>$(Platform)</PlatformTarget>
     <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+    <Configurations>Debug;Release;Debug_FailFast</Configurations>
   </PropertyGroup>
 
 <!--
@@ -28,6 +29,17 @@
   <PropertyGroup>
     <_PropertySheetDisplayName>DevHome.Root.Props</_PropertySheetDisplayName>
     <ForceImportBeforeCppProps>$(MsbuildThisFileDirectory)\Cpp.Build.props</ForceImportBeforeCppProps>
+    <BuildRing Condition="'$(BuildRing)'==''">Dev</BuildRing>
+    <DefineConstants Condition="'$(BuildRing)'=='Canary'">$(DefineConstants);CANARY_BUILD</DefineConstants>
+    <DefineConstants Condition="'$(BuildRing)'=='Stable'">$(DefineConstants);STABLE_BUILD</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug_FailFast'">
+    <DefineConstants>$(DefineConstants);DEBUG;DEBUG_FAILFAST</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
@@ -40,7 +52,7 @@
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)\codeAnalysis\StyleCop.json" Link="StyleCop.json" />
   </ItemGroup>
 
-  <PropertyGroup Condition="'$(Configuration)'=='Debug_FailFast'">
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug_FailFast'">
     <DisableXbfLineInfo>False</DisableXbfLineInfo>
   </PropertyGroup>
 

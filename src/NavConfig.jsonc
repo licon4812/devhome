@@ -40,6 +40,15 @@
             "viewModelFullName": "DevHome.Utilities.ViewModels.UtilitiesMainPageViewModel",
             "iconFontFamily": "DevHomeFluentIcons",
             "icon": "ECED"
+          },
+          {
+            "experimentalFeatureIdentity": "RepositoryManagementExperiment",
+            "identity": "DevHome.RepositoryManagement",
+            "assembly": "DevHome.RepositoryManagement",
+            "viewFullName": "DevHome.RepositoryManagement.Views.RepositoryManagementMainPageView",
+            "viewModelFullName": "DevHome.RepositoryManagement.ViewModels.RepositoryManagementMainPageViewModel",
+            "iconFontFamily": "DevHomeFluentIcons",
+            "icon": "F03F"
           }
         ]
       }
@@ -49,6 +58,7 @@
     {
       "identity": "QuietBackgroundProcessesExperiment",
       "enabledByDefault": false,
+      "needsFeaturePresenceCheck": true,
       "buildTypeOverrides": [
         {
           "buildType": "dev",
@@ -65,7 +75,36 @@
           "enabledByDefault": false,
           "visible": true
         }
-      ]
+      ],
+      "openPage": {
+        "key": "DevHome.Customization.ViewModels.MainPageViewModel"
+      }
+    },
+    {
+      "identity": "FileExplorerSourceControlIntegration",
+      "enabledByDefault": false,
+      "needsFeaturePresenceCheck": true,
+      "buildTypeOverrides": [
+        {
+          "buildType": "dev",
+          "enabledByDefault": true,
+          "visible": true
+        },
+        {
+          "buildType": "canary",
+          "enabledByDefault": true,
+          "visible": true
+        },
+        {
+          "buildType": "stable",
+          "enabledByDefault": false,
+          "visible": true
+        }
+      ],
+      "openPage": {
+        "key": "DevHome.Customization.ViewModels.MainPageViewModel",
+        "parameter": "ShowFileExplorer"
+      }
     },
     {
       "identity": "QuickstartPlayground",
@@ -86,10 +125,14 @@
           "enabledByDefault": false,
           "visible": true
         }
-      ]
+      ],
+      "openPage": {
+        "key": "DevHome.SetupFlow.ViewModels.SetupFlowViewModel",
+        "parameter": "StartQuickstartPlayground"
+      }
     },
     {
-      "identity": "ProjectIronsidesExperiment",
+      "identity": "DevDiagnosticsExperiment",
       "enabledByDefault": false,
       "buildTypeOverrides": [
         {
@@ -107,7 +150,34 @@
           "enabledByDefault": false,
           "visible": true
         }
-      ]
+      ],
+      "openPage": {
+        "key": "DevHome.Utilities.ViewModels.UtilitiesMainPageViewModel"
+      }
+    },
+    {
+      "identity": "RepositoryManagementExperiment",
+      "enabledByDefault": false,
+      "buildTypeOverrides": [
+        {
+          "buildType": "dev",
+          "enabledByDefault": false,
+          "visible": true
+        },
+        {
+          "buildType": "canary",
+          "enabledByDefault": false,
+          "visible": false
+        },
+        {
+          "buildType": "stable",
+          "enabledByDefault": false,
+          "visible": false
+        }
+      ],
+      "openPage": {
+        "key": "DevHome.RepositoryManagement.ViewModels.RepositoryManagementMainPageView"
+      }
     }
-  ]
+ ]
 }
